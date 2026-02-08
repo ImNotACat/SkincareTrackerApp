@@ -1,13 +1,39 @@
-import React from 'react';
-import { Stack } from 'expo-router';
+import React, { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { AuthProvider } from '../src/contexts/AuthContext';
+import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
-import { Typography } from '../src/constants/theme';
+import { ProductsProvider } from '../src/contexts/ProductsContext';
 
-function ThemedStack() {
+function RootLayoutNav() {
   const { colors, theme } = useTheme();
-  
+  const { isAuthenticated, isLoading } = useAuth();
+  const segments = useSegments();
+  const router = useRouter();
+
+  // Auth gate: redirect based on session state
+  useEffect(() => {
+    if (isLoading) return;
+
+    const onLoginScreen = segments[0] === 'login';
+    const onAuthCallback = segments[0] === 'auth';
+
+    if (!isAuthenticated && !onLoginScreen && !onAuthCallback) {
+      router.replace('/login');
+    } else if (isAuthenticated && (onLoginScreen || onAuthCallback)) {
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated, isLoading, segments, router]);
+
+  if (isLoading) {
+    return (
+      <View style={[loadingStyles.container, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <>
       <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
@@ -22,57 +48,51 @@ function ThemedStack() {
       >
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
         <Stack.Screen
           name="add-step"
-          options={{
-            title: 'Add Step',
-            presentation: 'modal',
-          }}
+          options={{ title: 'Add Step', presentation: 'modal' }}
         />
         <Stack.Screen
           name="edit-step"
-          options={{
-            title: 'Edit Step',
-            presentation: 'modal',
-          }}
+          options={{ title: 'Edit Step', presentation: 'modal' }}
         />
         <Stack.Screen
           name="add-product"
-          options={{
-            title: 'Add Product',
-            presentation: 'modal',
-          }}
+          options={{ title: 'Add Product', presentation: 'modal' }}
         />
         <Stack.Screen
           name="edit-product"
-          options={{
-            title: 'Edit Product',
-            presentation: 'modal',
-          }}
+          options={{ title: 'Edit Product', presentation: 'modal' }}
         />
         <Stack.Screen
           name="product-detail"
-          options={{
-            title: 'Product Details',
-          }}
+          options={{ title: 'Product Details' }}
         />
         <Stack.Screen
           name="add-entry"
-          options={{
-            title: 'New Entry',
-            presentation: 'modal',
-          }}
+          options={{ title: 'New Entry', presentation: 'modal' }}
         />
       </Stack>
     </>
   );
 }
 
+const loadingStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
 export default function RootLayout() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <ThemedStack />
+        <ProductsProvider>
+          <RootLayoutNav />
+        </ProductsProvider>
       </AuthProvider>
     </ThemeProvider>
   );

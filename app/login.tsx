@@ -1,12 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
 import { useTheme } from '../src/contexts/ThemeContext';
@@ -15,23 +15,31 @@ import { useAuth } from '../src/contexts/AuthContext';
 export default function LoginScreen() {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  const router = useRouter();
-  const { signIn, continueAsGuest, isLoading } = useAuth();
+  const { signInWithGoogle, continueAsGuest } = useAuth();
+  const [signingIn, setSigningIn] = useState(false);
 
   const handleGoogleSignIn = async () => {
-    await signIn();
-    router.replace('/(tabs)');
+    try {
+      setSigningIn(true);
+      await signInWithGoogle();
+    } catch (error: any) {
+      console.error('Sign in error:', error);
+      Alert.alert(
+        'Sign In Failed',
+        'Unable to sign in with Google. Please try again.',
+      );
+    } finally {
+      setSigningIn(false);
+    }
   };
 
   const handleGuest = () => {
     continueAsGuest();
-    router.replace('/(tabs)');
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.topSection}>
-        {/* Decorative circles */}
         <View style={styles.decorCircleOuter}>
           <View style={styles.decorCircleInner}>
             <Ionicons name="leaf-outline" size={40} color={colors.primary} />
@@ -48,7 +56,6 @@ export default function LoginScreen() {
         </Text>
       </View>
 
-      {/* Feature pills */}
       <View style={styles.pillsContainer}>
         <View style={styles.featurePill}>
           <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
@@ -64,15 +71,14 @@ export default function LoginScreen() {
         </View>
       </View>
 
-      {/* Auth Section */}
       <View style={styles.authSection}>
         <TouchableOpacity
           style={styles.continueButton}
           onPress={handleGoogleSignIn}
-          disabled={isLoading}
+          disabled={signingIn}
           activeOpacity={0.85}
         >
-          {isLoading ? (
+          {signingIn ? (
             <ActivityIndicator color={colors.textOnPrimary} />
           ) : (
             <>
