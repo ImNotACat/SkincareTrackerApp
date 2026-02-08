@@ -117,6 +117,35 @@ const createStyles = (colors: typeof import('../../src/constants/theme').Colors)
     backgroundColor: colors.divider,
     marginLeft: Spacing.md + 32 + Spacing.sm + 4,
   },
+  themePicker: {
+    flexDirection: 'row',
+    gap: Spacing.md,
+  },
+  themeOption: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  themeDot: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  themeDotSelected: {
+    borderColor: colors.primary,
+    borderWidth: 3,
+  },
+  themeLabel: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: colors.textLight,
+  },
+  themeLabelSelected: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
   bottomSpacer: {
     height: Spacing.xxl,
   },
@@ -169,7 +198,7 @@ export default function ProfileScreen() {
   const { user, signOut, isAuthenticated } = useAuth();
   const { steps, getTodayProgress } = useRoutine();
   const { activeProducts, products: allProducts } = useProducts();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const progress = getTodayProgress();
   const styles = createStyles(colors);
 
@@ -211,14 +240,45 @@ export default function ProfileScreen() {
       {/* Settings */}
       <Text style={styles.sectionTitle}>SETTINGS</Text>
       <View style={styles.settingsCard}>
-        <SettingRow
-          icon="color-palette-outline"
-          label="Theme"
-          value={theme === 'dark' ? 'Dark' : 'Light'}
-          onPress={toggleTheme}
-          colors={colors}
-          styles={styles}
-        />
+        <View style={styles.settingRow}>
+          <View style={styles.settingIcon}>
+            <Ionicons name="color-palette-outline" size={18} color={colors.primary} />
+          </View>
+          <Text style={styles.settingLabel}>Theme</Text>
+          <View style={styles.themePicker}>
+            {([
+              { key: 'light' as const, fill: '#F5F0E8', border: '#E0D9CE', label: 'Light', checkColor: '#2C2C2C' },
+              { key: 'dark' as const, fill: '#1A1A1A', border: '#3A3A3A', label: 'Dark', checkColor: '#FFFFFF' },
+              { key: 'pink' as const, fill: '#FF4081', border: '#FF80AB', label: 'Pink', checkColor: '#FFFFFF' },
+              { key: 'teal' as const, fill: '#00796B', border: '#4DB6AC', label: 'Teal', checkColor: '#FFFFFF' },
+            ]).map((t) => {
+              const isSelected = theme === t.key;
+              return (
+                <TouchableOpacity
+                  key={t.key}
+                  onPress={() => setTheme(t.key)}
+                  style={styles.themeOption}
+                  activeOpacity={0.7}
+                >
+                  <View
+                    style={[
+                      styles.themeDot,
+                      { backgroundColor: t.fill, borderColor: t.border },
+                      isSelected && styles.themeDotSelected,
+                    ]}
+                  >
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={14} color={t.checkColor} />
+                    )}
+                  </View>
+                  <Text style={[styles.themeLabel, isSelected && styles.themeLabelSelected]}>
+                    {t.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
         <View style={styles.divider} />
         <SettingRow
           icon="notifications-outline"

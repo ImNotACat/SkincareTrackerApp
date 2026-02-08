@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   email TEXT NOT NULL,
   display_name TEXT,
   avatar_url TEXT,
-  theme_preference TEXT DEFAULT 'light' CHECK (theme_preference IN ('light', 'dark')),
+  theme_preference TEXT DEFAULT 'light' CHECK (theme_preference IN ('light', 'dark', 'pink', 'teal')),
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
@@ -122,14 +122,14 @@ CREATE TABLE IF NOT EXISTS products (
   started_at DATE NOT NULL DEFAULT CURRENT_DATE,
   stopped_at DATE,
 
-  -- Scheduling: supports weekly, regular (every X days), or rota (N-day cycle)
-  schedule_type TEXT CHECK (schedule_type IN ('weekly', 'regular', 'rota')),
+  -- Scheduling: supports weekly, cycle (repeating N-day rota), or interval (every X days)
+  schedule_type TEXT CHECK (schedule_type IN ('weekly', 'cycle', 'interval')),
   schedule_days TEXT[],                    -- For weekly: days of week
-  schedule_interval_days INTEGER,          -- For regular: every X days
-  schedule_start_date DATE,                -- For regular: anchor date
-  schedule_rota_length INTEGER,            -- For rota: total days in cycle
-  schedule_rota_days INTEGER[],            -- For rota: 1-indexed active days
-  schedule_rota_start_date DATE,           -- For rota: anchor date
+  schedule_cycle_length INTEGER,           -- For cycle: total days in cycle
+  schedule_cycle_days INTEGER[],           -- For cycle: 1-indexed active days
+  schedule_cycle_start_date DATE,          -- For cycle: anchor date
+  schedule_interval_days INTEGER,          -- For interval: every X days
+  schedule_interval_start_date DATE,       -- For interval: anchor date
 
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL

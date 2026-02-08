@@ -109,14 +109,14 @@ export interface Product {
   started_at: string; // YYYY-MM-DD — when added to routine
   stopped_at?: string; // YYYY-MM-DD — undefined = still active
 
-  // Scheduling: supports weekly, regular (every X days), or rota (N-day cycle)
-  schedule_type?: 'weekly' | 'regular' | 'rota';
-  schedule_days?: DayOfWeek[];              // For weekly: days of week
-  schedule_interval_days?: number;           // For regular: every X days
-  schedule_start_date?: string;              // For regular: anchor date (YYYY-MM-DD)
-  schedule_rota_length?: number;              // For rota: total days in cycle
-  schedule_rota_days?: number[];              // For rota: 1-indexed active days
-  schedule_rota_start_date?: string;          // For rota: anchor date (YYYY-MM-DD)
+  // Scheduling: supports weekly, cycle (repeating N-day rota), or interval (every X days)
+  schedule_type?: ScheduleType;
+  schedule_days?: DayOfWeek[];               // For weekly: days of week
+  schedule_cycle_length?: number;            // For cycle: total days in cycle
+  schedule_cycle_days?: number[];            // For cycle: 1-indexed active days
+  schedule_cycle_start_date?: string;        // For cycle: anchor date (YYYY-MM-DD)
+  schedule_interval_days?: number;           // For interval: every X days
+  schedule_interval_start_date?: string;     // For interval: anchor date (YYYY-MM-DD)
 
   created_at: string;
   updated_at: string;

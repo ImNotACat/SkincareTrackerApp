@@ -15,17 +15,13 @@ A React Native app built with Expo Router to help you manage your daily skincare
 - **Daily Tracking** — Check off steps as you complete them; progress resets each day
 - **Quick Action Cards** — Jump to Explore or Track Progress directly from the homepage
 
-### Product Management
-- **Product Library** — Track every product in your routine with brand, category, frequency, and time of day
+### Products (My Products + Explore)
+- **My Products** — Track every product in your routine with brand, category, frequency, and time of day. Filter by Active, Stopped, All, or Wishlist
+- **Explore** — Search for skincare products using the Open Beauty Facts public API. Heart products to add them to your wishlist
 - **Import from URL** — Paste a product page link to auto-extract name, brand, image, and ingredients via meta tag scraping
-- **Active Ingredient Selector** — Searchable multi-select dropdown pre-populated with comprehensive skincare active ingredients, displayed as tags
+- **Active Ingredient Selector** — Searchable multi-select dropdown with categorised sections (Acids, Vitamins, Peptides, etc.), displayed as tags
 - **Expiry Tracking** — Track period-after-opening (PAO), purchase date, and open date with automatic expiry calculations
-- **Wishlist** — Heart products from the Explore page; view and manage your wishlist in the Products tab
-
-### Explore
-- **Product Search** — Search for skincare products using the Open Beauty Facts public API
-- **Product Details** — View product names, brands, and images from the database
-- **Wishlist Integration** — Tap the heart icon on any product to add/remove it from your wishlist
+- **Wishlist** — Heart products from Explore; view and manage your wishlist under My Products
 
 ### Ingredient Conflict Detection
 - **11 Curated Conflict Rules** — Covers retinoid + AHA/BHA, retinoid + benzoyl peroxide, multiple retinoids, vitamin C + acids, copper peptides + acids, and more
@@ -77,11 +73,10 @@ All dates throughout the app use **dd-mm-yyyy** format.
 │   ├── product-detail.tsx       # Full product detail view
 │   ├── add-entry.tsx            # Add journal entry (modal)
 │   └── (tabs)/                  # Tab navigation
-│       ├── _layout.tsx          # Tab bar config (6 tabs)
+│       ├── _layout.tsx          # Tab bar config (5 tabs)
 │       ├── index.tsx            # Today — week bar + smart AM/PM routine
 │       ├── routine.tsx          # Routine management with drag-and-drop
-│       ├── products.tsx         # Product library + wishlist
-│       ├── explore.tsx          # Product search via Open Beauty Facts
+│       ├── products.tsx         # My Products + Explore (combined)
 │       ├── journal.tsx          # Progress journal
 │       └── profile.tsx          # Profile, settings & theme toggle
 ├── src/
@@ -151,12 +146,10 @@ The app works immediately in **Guest Mode** with local storage. For cloud sync, 
 2. **Add Steps** — Go to the "Routine" tab, tap +, pick a category, time of day, and schedule (weekly days, cycle rota, or interval)
 3. **Reorder Steps** — On the Routine tab, press and drag the handle icon to reorder steps
 4. **Track Daily** — The "Today" tab auto-shows your current routine; tap checkboxes to mark steps done. Use the week bar to view previous days
-5. **Add Products** — In the "Products" tab, tap + to add manually or import from a URL
-6. **Explore Products** — Search the Open Beauty Facts database and heart products to add them to your wishlist
+5. **Add Products** — In the "Products" tab under My Products, tap + to add manually or import from a URL
+6. **Explore Products** — Switch to the Explore tab within Products to search Open Beauty Facts and heart items to your wishlist
 7. **Check Conflicts** — Ingredient warnings appear automatically on the Today screen and product detail pages
 8. **Log Progress** — In the "Progress" tab, tap + to add a photo or note about your skin
 9. **Dark Mode** — Toggle between light and dark themes in the Profile tab
 
-## License
 
-MIT

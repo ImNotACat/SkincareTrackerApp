@@ -6,11 +6,11 @@ import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { Typography } from '../src/constants/theme';
 
 function ThemedStack() {
-  const { colors } = useTheme();
+  const { colors, theme } = useTheme();
   
   return (
     <>
-      <StatusBar style={colors.background === '#1A1A1A' ? 'light' : 'dark'} />
+      <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerStyle: { backgroundColor: colors.background },

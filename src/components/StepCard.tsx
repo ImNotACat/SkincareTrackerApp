@@ -6,7 +6,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
+import { Typography, Spacing, BorderRadius } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { CATEGORY_INFO } from '../constants/skincare';
 import type { TodayStep } from '../types';
 
@@ -17,6 +18,8 @@ interface StepCardProps {
 }
 
 export function StepCard({ step, onToggle, onPress }: StepCardProps) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   const category = CATEGORY_INFO[step.category];
 
   return (
@@ -31,7 +34,7 @@ export function StepCard({ step, onToggle, onPress }: StepCardProps) {
         hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
       >
         {step.isCompleted && (
-          <Ionicons name="checkmark" size={14} color={Colors.textOnPrimary} />
+          <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />
         )}
       </TouchableOpacity>
 
@@ -51,42 +54,42 @@ export function StepCard({ step, onToggle, onPress }: StepCardProps) {
         <Ionicons
           name={category.icon as any}
           size={16}
-          color={step.isCompleted ? Colors.textLight : category.color}
+          color={step.isCompleted ? colors.textLight : category.color}
         />
       </View>
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   containerCompleted: {
     opacity: 0.55,
-    backgroundColor: Colors.surfaceSecondary,
-    borderColor: Colors.surfaceSecondary,
+    backgroundColor: colors.surfaceSecondary,
+    borderColor: colors.surfaceSecondary,
   },
   checkbox: {
     width: 22,
     height: 22,
     borderRadius: 11,
     borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.sm + 4,
   },
   checkboxChecked: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   content: {
     flex: 1,
@@ -95,14 +98,16 @@ const styles = StyleSheet.create({
   name: {
     ...Typography.body,
     fontWeight: '500',
+    color: colors.text,
   },
   nameCompleted: {
     textDecorationLine: 'line-through',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   meta: {
     ...Typography.caption,
     marginTop: 2,
+    color: colors.textLight,
   },
   iconCircle: {
     width: 32,

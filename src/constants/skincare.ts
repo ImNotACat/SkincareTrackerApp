@@ -89,86 +89,125 @@ export const DEFAULT_ROUTINE_TEMPLATE: Partial<
 
 // ─── Active Ingredients List ──────────────────────────────────────────────────
 
-export const ACTIVE_INGREDIENTS: string[] = [
-  // Vitamins & Antioxidants
-  'Niacinamide',
-  'Niacin',
-  'Vitamin C (Ascorbic Acid)',
-  'Vitamin C',
-  'L-Ascorbic Acid',
-  'Vitamin E (Tocopherol)',
-  'Vitamin A (Retinol)',
-  'Retinoids',
-  'Retinaldehyde',
-  'Retinyl Palmitate',
-  'Panthenol (Vitamin B5)',
+export type IngredientSection = {
+  title: string;
+  data: string[];
+};
 
-  // Acids
-  'Salicylic Acid (BHA)',
-  'Glycolic Acid (AHA)',
-  'Lactic Acid (AHA)',
-  'Mandelic Acid (AHA)',
-  'Azelaic Acid',
-  'Kojic Acid',
-  'Tranexamic Acid',
-  'Hyaluronic Acid',
-  'Ferulic Acid',
-
-  // Peptides & Growth Factors
-  'Peptides',
-  'Copper Peptides',
-  'Palmitoyl Tripeptide-1',
-  'Palmitoyl Tetrapeptide-7',
-  'Matrixyl',
-  'Argireline',
-
-  // Ceramides & Barrier Repair
-  'Ceramides',
-  'Ceramide NP',
-  'Ceramide AP',
-  'Cholesterol',
-  'Fatty Acids',
-  'Squalane',
-  'Squalene',
-
-  // Brightening & Pigmentation
-  'Arbutin',
-  'Licorice Root Extract',
-
-  // Anti-inflammatory & Soothing
-  'Centella Asiatica',
-  'Madecassoside',
-  'Allantoin',
-  'Aloe Vera',
-  'Chamomile Extract',
-  'Green Tea Extract',
-  'Zinc PCA',
-
-  // Exfoliants
-  'PHA (Polyhydroxy Acids)',
-  'Gluconolactone',
-  'Lactobionic Acid',
-
-  // Moisturizing & Hydrating
-  'Glycerin',
-  'Urea',
-  'Sodium Hyaluronate',
-
-  // Sun Protection
-  'Zinc Oxide',
-  'Titanium Dioxide',
-  'Avobenzone',
-  'Octinoxate',
-  'Octocrylene',
-
-  // Other Actives
-  'Bakuchiol',
-  'Resveratrol',
-  'Coenzyme Q10',
-  'Adenosine',
-  'Snail Mucin',
-  'Propolis',
-  'Honey',
-  'Collagen',
-  'Elastin',
+export const INGREDIENT_SECTIONS: IngredientSection[] = [
+  {
+    title: 'Acids',
+    data: [
+      'Azelaic Acid',
+      'Ferulic Acid',
+      'Glycolic Acid (AHA)',
+      'Hyaluronic Acid',
+      'Kojic Acid',
+      'Lactic Acid (AHA)',
+      'Mandelic Acid (AHA)',
+      'Salicylic Acid (BHA)',
+      'Tranexamic Acid',
+    ],
+  },
+  {
+    title: 'Brightening & Pigmentation',
+    data: [
+      'Arbutin',
+      'Licorice Root Extract',
+    ],
+  },
+  {
+    title: 'Ceramides & Barrier Repair',
+    data: [
+      'Ceramide AP',
+      'Ceramide NP',
+      'Ceramides',
+      'Cholesterol',
+      'Fatty Acids',
+      'Squalane',
+      'Squalene',
+    ],
+  },
+  {
+    title: 'Exfoliants',
+    data: [
+      'Gluconolactone',
+      'Lactobionic Acid',
+      'PHA (Polyhydroxy Acids)',
+    ],
+  },
+  {
+    title: 'Moisturising & Hydrating',
+    data: [
+      'Glycerin',
+      'Sodium Hyaluronate',
+      'Urea',
+    ],
+  },
+  {
+    title: 'Peptides & Growth Factors',
+    data: [
+      'Argireline',
+      'Copper Peptides',
+      'Matrixyl',
+      'Palmitoyl Tetrapeptide-7',
+      'Palmitoyl Tripeptide-1',
+      'Peptides',
+    ],
+  },
+  {
+    title: 'Soothing & Anti-inflammatory',
+    data: [
+      'Allantoin',
+      'Aloe Vera',
+      'Centella Asiatica',
+      'Chamomile Extract',
+      'Green Tea Extract',
+      'Madecassoside',
+      'Zinc PCA',
+    ],
+  },
+  {
+    title: 'Sun Protection',
+    data: [
+      'Avobenzone',
+      'Octinoxate',
+      'Octocrylene',
+      'Titanium Dioxide',
+      'Zinc Oxide',
+    ],
+  },
+  {
+    title: 'Vitamins & Antioxidants',
+    data: [
+      'L-Ascorbic Acid',
+      'Niacin',
+      'Niacinamide',
+      'Panthenol (Vitamin B5)',
+      'Retinaldehyde',
+      'Retinoids',
+      'Retinyl Palmitate',
+      'Vitamin A (Retinol)',
+      'Vitamin C',
+      'Vitamin C (Ascorbic Acid)',
+      'Vitamin E (Tocopherol)',
+    ],
+  },
+  {
+    title: 'Other Actives',
+    data: [
+      'Adenosine',
+      'Bakuchiol',
+      'Coenzyme Q10',
+      'Collagen',
+      'Elastin',
+      'Honey',
+      'Propolis',
+      'Resveratrol',
+      'Snail Mucin',
+    ],
+  },
 ];
+
+// Flat list for backwards compatibility (e.g. conflict detection)
+export const ACTIVE_INGREDIENTS: string[] = INGREDIENT_SECTIONS.flatMap((s) => s.data);

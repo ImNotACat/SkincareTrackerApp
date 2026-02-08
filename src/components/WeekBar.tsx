@@ -1,114 +1,213 @@
-import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
-import { DAYS_OF_WEEK } from '../constants/skincare';
-import { formatDateDDMMYYYY, getTodayString } from '../lib/dateUtils';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  FlatList,
+  StyleSheet,
+  Dimensions,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Typography, Spacing, BorderRadius } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { getTodayString } from '../lib/dateUtils';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const WEEKS_BEFORE = 12;
+const WEEKS_AFTER = 12;
+const INITIAL_INDEX = WEEKS_BEFORE;
+
+const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 interface WeekBarProps {
-  selectedDate: string; // YYYY-MM-DD
+  selectedDate: string;
   onDateSelect: (date: string) => void;
 }
 
-export function WeekBar({ selectedDate, onDateSelect }: WeekBarProps) {
-  const weekDates = useMemo(() => {
-    const selected = new Date(selectedDate + 'T00:00:00');
-    const dayOfWeek = selected.getDay();
-    const startOfWeek = new Date(selected);
-    startOfWeek.setDate(selected.getDate() - dayOfWeek); // Go to Sunday
-    
-    const dates: { date: Date; dateStr: string; dayName: string; dayNumber: number }[] = [];
-    for (let i = 0; i < 7; i++) {
-      const date = new Date(startOfWeek);
-      date.setDate(startOfWeek.getDate() + i);
-      const dateStr = date.toISOString().split('T')[0];
-      const dayIndex = date.getDay();
-      dates.push({
-        date,
-        dateStr,
-        dayName: DAYS_OF_WEEK[dayIndex === 0 ? 6 : dayIndex - 1].short,
+function getMonday(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function toDateStr(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+type WeekData = {
+  key: string;
+  days: { dateStr: string; dayLabel: string; dayNumber: number }[];
+};
+
+function buildWeeks(): WeekData[] {
+  const todayMonday = getMonday(new Date());
+  const weeks: WeekData[] = [];
+
+  for (let w = -WEEKS_BEFORE; w <= WEEKS_AFTER; w++) {
+    const monday = new Date(todayMonday);
+    monday.setDate(todayMonday.getDate() + w * 7);
+
+    const days: WeekData['days'] = [];
+    for (let d = 0; d < 7; d++) {
+      const date = new Date(monday);
+      date.setDate(monday.getDate() + d);
+      days.push({
+        dateStr: toDateStr(date),
+        dayLabel: DAY_LABELS[d],
         dayNumber: date.getDate(),
       });
     }
-    return dates;
+
+    weeks.push({ key: `week-${toDateStr(monday)}`, days });
+  }
+  return weeks;
+}
+
+export function WeekBar({ selectedDate, onDateSelect }: WeekBarProps) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+  const insets = useSafeAreaInsets();
+  const flatListRef = useRef<FlatList<WeekData>>(null);
+  const weeks = useMemo(() => buildWeeks(), []);
+  const todayStr = getTodayString();
+
+  const [currentPage, setCurrentPage] = useState(INITIAL_INDEX);
+
+  useEffect(() => {
+    const targetIdx = weeks.findIndex((w) =>
+      w.days.some((d) => d.dateStr === selectedDate),
+    );
+    if (targetIdx >= 0 && targetIdx !== currentPage) {
+      flatListRef.current?.scrollToIndex({ index: targetIdx, animated: true });
+      setCurrentPage(targetIdx);
+    }
   }, [selectedDate]);
 
-  const todayStr = getTodayString();
-  const isToday = (dateStr: string) => dateStr === todayStr;
-  const isSelected = (dateStr: string) => dateStr === selectedDate;
+  const onMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const page = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+      setCurrentPage(page);
+    },
+    [],
+  );
 
-  return (
-    <ScrollView
-      horizontal={true}
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.container}
-      style={styles.scrollView}
-    >
-      {weekDates.map(({ dateStr, dayName, dayNumber }) => {
-        const today = isToday(dateStr);
-        const selected = isSelected(dateStr);
-        
-        return (
-          <TouchableOpacity
-            key={dateStr}
-            style={[styles.dayButton, selected && styles.dayButtonSelected]}
-            onPress={() => onDateSelect(dateStr)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.dayName, selected && styles.dayNameSelected]}>
-              {dayName}
-            </Text>
-            <View
-              style={[
-                styles.dayCircle,
-                today && styles.dayCircleToday,
-                selected && styles.dayCircleSelected,
-              ]}
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: SCREEN_WIDTH,
+      offset: SCREEN_WIDTH * index,
+      index,
+    }),
+    [],
+  );
+
+  const renderWeek = useCallback(
+    ({ item }: { item: WeekData }) => (
+      <View style={styles.weekPage}>
+        {item.days.map(({ dateStr, dayLabel, dayNumber }) => {
+          const isToday = dateStr === todayStr;
+          const isSelected = dateStr === selectedDate;
+
+          return (
+            <TouchableOpacity
+              key={dateStr}
+              style={[styles.dayButton, isSelected && styles.dayButtonSelected]}
+              onPress={() => onDateSelect(dateStr)}
+              activeOpacity={0.7}
             >
-              <Text
+              <Text style={[styles.dayName, isSelected && styles.dayNameSelected]}>
+                {dayLabel}
+              </Text>
+              <View
                 style={[
-                  styles.dayNumber,
-                  today && styles.dayNumberToday,
-                  selected && styles.dayNumberSelected,
+                  styles.dayCircle,
+                  isToday && styles.dayCircleToday,
+                  isSelected && styles.dayCircleSelected,
                 ]}
               >
-                {dayNumber}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
+                <Text
+                  style={[
+                    styles.dayNumber,
+                    isToday && styles.dayNumberToday,
+                    isSelected && styles.dayNumberSelected,
+                  ]}
+                >
+                  {dayNumber}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    ),
+    [selectedDate, todayStr, onDateSelect, styles],
+  );
+
+  return (
+    <View style={[styles.wrapper, { paddingTop: insets.top }]}>
+      <FlatList
+        ref={flatListRef}
+        data={weeks}
+        horizontal={true}
+        pagingEnabled={true}
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(item) => item.key}
+        renderItem={renderWeek}
+        getItemLayout={getItemLayout}
+        initialScrollIndex={INITIAL_INDEX}
+        onMomentumScrollEnd={onMomentumScrollEnd}
+        initialNumToRender={3}
+        windowSize={5}
+        maxToRenderPerBatch={3}
+      />
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
-  scrollView: {
+const createStyles = (colors: any) => StyleSheet.create({
+  wrapper: {
+    backgroundColor: colors.surface,
+    borderBottomLeftRadius: BorderRadius.lg,
+    borderBottomRightRadius: BorderRadius.lg,
     marginBottom: Spacing.md,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  container: {
-    paddingHorizontal: Spacing.md + 4,
-    paddingVertical: Spacing.sm,
-    gap: Spacing.sm,
+  weekPage: {
+    width: SCREEN_WIDTH,
+    flexDirection: 'row',
+    justifyContent: 'space-evenly',
+    paddingVertical: Spacing.sm + 4,
+    paddingHorizontal: Spacing.xs,
   },
   dayButton: {
     alignItems: 'center',
     paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.sm + 2,
-    minWidth: 50,
+    paddingHorizontal: 2,
+    minWidth: 42,
+    borderRadius: BorderRadius.md,
   },
   dayButtonSelected: {
-    backgroundColor: Colors.primary + '10',
-    borderRadius: BorderRadius.md,
+    backgroundColor: colors.primary + '12',
   },
   dayName: {
     ...Typography.caption,
     fontSize: 11,
     marginBottom: Spacing.xs,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
   },
   dayNameSelected: {
-    color: Colors.primaryDark,
+    color: colors.primaryDark,
     fontWeight: '600',
   },
   dayCircle: {
@@ -117,30 +216,31 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 0,
   },
   dayCircleToday: {
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     borderWidth: 2,
+    backgroundColor: colors.surface,
   },
   dayCircleSelected: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+    borderWidth: 0,
   },
   dayNumber: {
     ...Typography.body,
     fontSize: 14,
     fontWeight: '500',
-    color: Colors.text,
+    color: colors.text,
   },
   dayNumberToday: {
-    color: Colors.primaryDark,
+    color: colors.primaryDark,
     fontWeight: '600',
   },
   dayNumberSelected: {
-    color: Colors.textOnPrimary,
+    color: colors.textOnPrimary,
     fontWeight: '600',
   },
 });

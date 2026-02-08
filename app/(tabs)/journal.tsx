@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius } from '../../src/constants/theme';
+import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { useJournal } from '../../src/hooks/useJournal';
 import { EmptyState } from '../../src/components/EmptyState';
 import { formatDateShort } from '../../src/lib/dateUtils';
@@ -50,6 +51,8 @@ function formatTime(isoStr: string): string {
 // ─── Screen ─────────────────────────────────────────────────────────────────
 
 export default function JournalScreen() {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   const router = useRouter();
   const { groupedByDate, isLoading, deleteEntry, reload } = useJournal();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -72,7 +75,7 @@ export default function JournalScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={reload} tintColor={Colors.primary} />
+          <RefreshControl refreshing={isLoading} onRefresh={reload} tintColor={colors.primary} />
         }
       >
         {!hasEntries ? (
@@ -109,7 +112,7 @@ export default function JournalScreen() {
         onPress={() => router.push('/add-entry')}
         activeOpacity={0.8}
       >
-        <Ionicons name="add" size={26} color={Colors.textOnPrimary} />
+        <Ionicons name="add" size={26} color={colors.textOnPrimary} />
       </TouchableOpacity>
 
       {/* Full-screen image viewer overlay */}
@@ -131,6 +134,8 @@ function EntryCard({
   onImagePress: (uri: string) => void;
   onDelete: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   const isPhoto = entry.type === 'photo' && !!entry.image_uri;
 
   return (
@@ -140,13 +145,13 @@ function EntryCard({
           <View
             style={[
               styles.entryTypeIcon,
-              { backgroundColor: (isPhoto ? '#7B9AAF' : Colors.primary) + '18' },
+              { backgroundColor: (isPhoto ? '#7B9AAF' : colors.primary) + '18' },
             ]}
           >
             <Ionicons
               name={isPhoto ? 'camera-outline' : 'chatbubble-outline'}
               size={14}
-              color={isPhoto ? '#7B9AAF' : Colors.primary}
+              color={isPhoto ? '#7B9AAF' : colors.primary}
             />
           </View>
           <Text style={styles.entryTime}>{formatTime(entry.created_at)}</Text>
@@ -155,7 +160,7 @@ function EntryCard({
           onPress={onDelete}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
         >
-          <Ionicons name="trash-outline" size={16} color={Colors.textLight} />
+          <Ionicons name="trash-outline" size={16} color={colors.textLight} />
         </TouchableOpacity>
       </View>
 
@@ -184,6 +189,8 @@ function EntryCard({
 // ─── Full-Screen Image Viewer ───────────────────────────────────────────────
 
 function ImageViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   return (
     <View style={styles.viewerOverlay}>
       <TouchableOpacity style={styles.viewerClose} onPress={onClose} activeOpacity={0.7}>
@@ -196,10 +203,10 @@ function ImageViewer({ uri, onClose }: { uri: string; onClose: () => void }) {
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   content: {
     padding: CONTENT_PADDING,
@@ -211,6 +218,7 @@ const styles = StyleSheet.create({
   },
   dateHeading: {
     ...Typography.label,
+    color: colors.textSecondary,
     fontSize: 12,
     letterSpacing: 0.8,
     marginBottom: Spacing.sm + 4,
@@ -218,10 +226,10 @@ const styles = StyleSheet.create({
 
   // Entry card
   entryCard: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
   },
@@ -245,6 +253,7 @@ const styles = StyleSheet.create({
   },
   entryTime: {
     ...Typography.caption,
+    color: colors.textLight,
     fontSize: 11,
   },
   entryImageWrap: {
@@ -257,7 +266,7 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 4 / 3,
     borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor: colors.surfaceSecondary,
   },
   expandHint: {
     position: 'absolute',
@@ -272,6 +281,7 @@ const styles = StyleSheet.create({
   },
   entryText: {
     ...Typography.body,
+    color: colors.text,
     fontSize: 14,
     lineHeight: 21,
   },
@@ -284,7 +294,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 4,

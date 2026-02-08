@@ -1,8 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Colors, DarkColors } from '../constants/theme';
+import { Colors, DarkColors, PinkColors, TealColors } from '../constants/theme';
 
-type Theme = 'light' | 'dark';
+type Theme = 'light' | 'dark' | 'pink' | 'teal';
+
+const THEME_MAP: Record<Theme, typeof Colors> = {
+  light: Colors,
+  dark: DarkColors,
+  pink: PinkColors,
+  teal: TealColors,
+};
+
+const VALID_THEMES: Theme[] = ['light', 'dark', 'pink', 'teal'];
 
 interface ThemeContextType {
   theme: Theme;
@@ -25,8 +34,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const loadTheme = async () => {
     try {
       const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-      if (saved === 'dark' || saved === 'light') {
-        setThemeState(saved);
+      if (saved && VALID_THEMES.includes(saved as Theme)) {
+        setThemeState(saved as Theme);
       }
     } catch (error) {
       console.error('Failed to load theme:', error);
@@ -43,11 +52,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toggleTheme = useCallback(async () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    await setTheme(newTheme);
+    const idx = VALID_THEMES.indexOf(theme);
+    const nextTheme = VALID_THEMES[(idx + 1) % VALID_THEMES.length];
+    await setTheme(nextTheme);
   }, [theme, setTheme]);
 
-  const colors = theme === 'dark' ? DarkColors : Colors;
+  const colors = THEME_MAP[theme];
 
   return (
     <ThemeContext.Provider value={{ theme, colors, toggleTheme, setTheme }}>

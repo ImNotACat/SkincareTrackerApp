@@ -8,10 +8,13 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius } from '../src/constants/theme';
+import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
+import { useTheme } from '../src/contexts/ThemeContext';
 import { useAuth } from '../src/contexts/AuthContext';
 
 export default function LoginScreen() {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   const router = useRouter();
   const { signIn, continueAsGuest, isLoading } = useAuth();
 
@@ -31,7 +34,7 @@ export default function LoginScreen() {
         {/* Decorative circles */}
         <View style={styles.decorCircleOuter}>
           <View style={styles.decorCircleInner}>
-            <Ionicons name="leaf-outline" size={40} color={Colors.primary} />
+            <Ionicons name="leaf-outline" size={40} color={colors.primary} />
           </View>
         </View>
 
@@ -48,15 +51,15 @@ export default function LoginScreen() {
       {/* Feature pills */}
       <View style={styles.pillsContainer}>
         <View style={styles.featurePill}>
-          <Ionicons name="checkmark-circle-outline" size={18} color={Colors.primary} />
+          <Ionicons name="checkmark-circle-outline" size={18} color={colors.primary} />
           <Text style={styles.featurePillText}>Morning & evening routines</Text>
         </View>
         <View style={styles.featurePill}>
-          <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+          <Ionicons name="calendar-outline" size={18} color={colors.primary} />
           <Text style={styles.featurePillText}>Per-day customization</Text>
         </View>
         <View style={styles.featurePill}>
-          <Ionicons name="flask-outline" size={18} color={Colors.primary} />
+          <Ionicons name="flask-outline" size={18} color={colors.primary} />
           <Text style={styles.featurePillText}>Product tracking</Text>
         </View>
       </View>
@@ -70,10 +73,10 @@ export default function LoginScreen() {
           activeOpacity={0.85}
         >
           {isLoading ? (
-            <ActivityIndicator color={Colors.textOnPrimary} />
+            <ActivityIndicator color={colors.textOnPrimary} />
           ) : (
             <>
-              <Ionicons name="logo-google" size={18} color={Colors.textOnPrimary} />
+              <Ionicons name="logo-google" size={18} color={colors.textOnPrimary} />
               <Text style={styles.continueButtonText}>Continue with Google</Text>
             </>
           )}
@@ -91,10 +94,10 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
     paddingHorizontal: Spacing.lg,
     justifyContent: 'center',
   },
@@ -106,7 +109,7 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.lg,
@@ -115,20 +118,21 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
   heading: {
     fontSize: 30,
     fontWeight: '700',
-    color: Colors.text,
+    color: colors.text,
     textAlign: 'center',
     lineHeight: 38,
     letterSpacing: -0.5,
   },
   description: {
     ...Typography.bodySmall,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: Spacing.md,
     lineHeight: 20,
@@ -145,12 +149,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md + 4,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     gap: Spacing.sm,
   },
   featurePillText: {
     ...Typography.body,
+    color: colors.text,
     fontSize: 14,
   },
   authSection: {
@@ -160,14 +165,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderRadius: BorderRadius.pill,
     paddingVertical: Spacing.md,
     gap: Spacing.sm,
   },
   continueButtonText: {
     ...Typography.button,
-    color: Colors.textOnPrimary,
+    color: colors.textOnPrimary,
   },
   skipButton: {
     alignItems: 'center',
@@ -175,7 +180,7 @@ const styles = StyleSheet.create({
   },
   skipText: {
     ...Typography.bodySmall,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     textDecorationLine: 'underline',
   },
 });

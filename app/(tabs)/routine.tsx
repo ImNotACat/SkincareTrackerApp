@@ -9,7 +9,8 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DragList, { DragListRenderItemInfo } from 'react-native-draglist';
-import { Colors, Typography, Spacing, BorderRadius } from '../../src/constants/theme';
+import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { useRoutine } from '../../src/hooks/useRoutine';
 import { CATEGORY_INFO } from '../../src/constants/skincare';
 import { SectionHeader } from '../../src/components/SectionHeader';
@@ -41,6 +42,8 @@ function getScheduleLabel(step: RoutineStep): string {
 
 export default function RoutineScreen() {
   const router = useRouter();
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   const { steps, deleteStep, reorderSteps } = useRoutine();
   const [activeTab, setActiveTab] = useState<TimeOfDay>('morning');
 
@@ -91,6 +94,14 @@ export default function RoutineScreen() {
         onPress={() => handleEdit(item)}
         activeOpacity={0.7}
       >
+        <TouchableOpacity
+          onPressIn={onDragStart}
+          onPressOut={onDragEnd}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          style={styles.dragHandle}
+        >
+          <Ionicons name="reorder-three-outline" size={22} color={colors.textLight} />
+        </TouchableOpacity>
         <View style={[styles.categoryIcon, { backgroundColor: category.color + '18' }]}>
           <Ionicons name={category.icon as any} size={18} color={category.color} />
         </View>
@@ -102,22 +113,13 @@ export default function RoutineScreen() {
             {category.label}  ·  {scheduleLabel}
           </Text>
         </View>
-        <View style={styles.stepActions}>
-          <TouchableOpacity
-            onPressIn={onDragStart}
-            onPressOut={onDragEnd}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="reorder-three-outline" size={22} color={Colors.textLight} style={styles.dragHandle} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => handleDelete(item)}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            style={styles.deleteButton}
-          >
-            <Ionicons name="close" size={16} color={Colors.textLight} />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => handleDelete(item)}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.deleteButton}
+        >
+          <Ionicons name="close" size={16} color={colors.textLight} />
+        </TouchableOpacity>
       </TouchableOpacity>
     );
   }
@@ -133,7 +135,7 @@ export default function RoutineScreen() {
           <Ionicons
             name="sunny-outline"
             size={16}
-            color={activeTab === 'morning' ? Colors.textOnPrimary : Colors.textSecondary}
+            color={activeTab === 'morning' ? colors.textOnPrimary : colors.textSecondary}
           />
           <Text
             style={[styles.toggleText, activeTab === 'morning' && styles.toggleTextActive]}
@@ -148,7 +150,7 @@ export default function RoutineScreen() {
           <Ionicons
             name="moon-outline"
             size={16}
-            color={activeTab === 'evening' ? Colors.textOnPrimary : Colors.textSecondary}
+            color={activeTab === 'evening' ? colors.textOnPrimary : colors.textSecondary}
           />
           <Text
             style={[styles.toggleText, activeTab === 'evening' && styles.toggleTextActive]}
@@ -188,22 +190,22 @@ export default function RoutineScreen() {
         onPress={() => router.push('/add-step')}
         activeOpacity={0.85}
       >
-        <Ionicons name="add" size={26} color={Colors.textOnPrimary} />
+        <Ionicons name="add" size={26} color={colors.textOnPrimary} />
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   toggleContainer: {
     flexDirection: 'row',
     marginHorizontal: Spacing.md + 4,
     marginTop: Spacing.md,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: BorderRadius.pill,
     padding: 3,
   },
@@ -217,15 +219,15 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   toggleActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
   },
   toggleText: {
     ...Typography.button,
     fontSize: 13,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
   },
   toggleTextActive: {
-    color: Colors.textOnPrimary,
+    color: colors.textOnPrimary,
   },
   scrollView: {
     flex: 1,
@@ -237,29 +239,25 @@ const styles = StyleSheet.create({
   stepRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   stepRowDragging: {
-    shadowColor: Colors.primaryDark,
+    shadowColor: colors.primaryDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 8,
-    borderColor: Colors.primary,
+    borderColor: colors.primary,
     opacity: 0.9,
   },
-  stepActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.xs,
-  },
   dragHandle: {
-    marginRight: 2,
+    marginRight: Spacing.sm + 2,
+    padding: Spacing.xs,
   },
   categoryIcon: {
     width: 38,
@@ -276,16 +274,18 @@ const styles = StyleSheet.create({
   stepName: {
     ...Typography.body,
     fontWeight: '500',
+    color: colors.text,
   },
   stepMeta: {
     ...Typography.caption,
     marginTop: 2,
+    color: colors.textLight,
   },
   deleteButton: {
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor: colors.surfaceSecondary,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -296,10 +296,10 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: Colors.primaryDark,
+    shadowColor: colors.primaryDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,

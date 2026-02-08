@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius } from '../src/constants/theme';
+import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
+import { useTheme } from '../src/contexts/ThemeContext';
 import { useRoutine } from '../src/hooks/useRoutine';
 import {
   CATEGORIES,
@@ -25,6 +26,8 @@ import type { StepCategory, DayOfWeek, TimeOfDay, ScheduleType } from '../src/ty
 export default function AddStepScreen() {
   const router = useRouter();
   const { addStep, steps } = useRoutine();
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
 
   const [name, setName] = useState('');
   const [productName, setProductName] = useState('');
@@ -124,7 +127,7 @@ export default function AddStepScreen() {
         value={name}
         onChangeText={setName}
         placeholder="e.g., Vitamin C Serum"
-        placeholderTextColor={Colors.textLight}
+        placeholderTextColor={colors.textLight}
       />
 
       <Text style={styles.label}>PRODUCT NAME (OPTIONAL)</Text>
@@ -133,7 +136,7 @@ export default function AddStepScreen() {
         value={productName}
         onChangeText={setProductName}
         placeholder="e.g., The Ordinary Vitamin C 23%"
-        placeholderTextColor={Colors.textLight}
+        placeholderTextColor={colors.textLight}
       />
 
       <Text style={styles.label}>TIME OF DAY</Text>
@@ -149,7 +152,7 @@ export default function AddStepScreen() {
               <Ionicons
                 name={option.icon as any}
                 size={16}
-                color={selected ? Colors.textOnPrimary : Colors.textSecondary}
+                color={selected ? colors.textOnPrimary : colors.textSecondary}
               />
               <Text style={[styles.pillText, selected && styles.pillTextSelected]}>
                 {option.label}
@@ -173,7 +176,7 @@ export default function AddStepScreen() {
               <Ionicons
                 name={info.icon as any}
                 size={14}
-                color={selected ? Colors.textOnPrimary : Colors.textSecondary}
+                color={selected ? colors.textOnPrimary : colors.textSecondary}
               />
               <Text style={[styles.chipText, selected && styles.chipTextSelected]}>
                 {info.label}
@@ -198,7 +201,7 @@ export default function AddStepScreen() {
               <Ionicons
                 name={option.icon as any}
                 size={16}
-                color={selected ? Colors.textOnPrimary : Colors.textSecondary}
+                color={selected ? colors.textOnPrimary : colors.textSecondary}
               />
               <Text style={[styles.scheduleTypeText, selected && styles.scheduleTypeTextSelected]}>
                 {option.label}
@@ -251,7 +254,7 @@ export default function AddStepScreen() {
             value={cycleLength}
             onChangeText={handleCycleLengthChange}
             placeholder="e.g., 4"
-            placeholderTextColor={Colors.textLight}
+            placeholderTextColor={colors.textLight}
             keyboardType="number-pad"
           />
 
@@ -295,7 +298,7 @@ export default function AddStepScreen() {
               value={intervalDays}
               onChangeText={setIntervalDays}
               placeholder="3"
-              placeholderTextColor={Colors.textLight}
+              placeholderTextColor={colors.textLight}
               keyboardType="number-pad"
             />
             <Text style={styles.intervalUnit}>days</Text>
@@ -312,7 +315,7 @@ export default function AddStepScreen() {
         value={notes}
         onChangeText={setNotes}
         placeholder="Any notes about this step..."
-        placeholderTextColor={Colors.textLight}
+        placeholderTextColor={colors.textLight}
         multiline={true}
         numberOfLines={3}
       />
@@ -326,21 +329,23 @@ export default function AddStepScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+const createStyles = (colors: any) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   content: { padding: Spacing.md + 4 },
   label: {
     ...Typography.label,
+    color: colors.textSecondary,
     marginTop: Spacing.lg,
     marginBottom: Spacing.sm,
   },
   input: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     ...Typography.body,
+    color: colors.text,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
   },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   pillRow: { flexDirection: 'row', gap: Spacing.sm },
@@ -352,13 +357,13 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm + 3,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     gap: 6,
   },
-  pillSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  pillText: { ...Typography.button, fontSize: 13, color: Colors.textSecondary },
-  pillTextSelected: { color: Colors.textOnPrimary },
+  pillSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  pillText: { ...Typography.button, fontSize: 13, color: colors.textSecondary },
+  pillTextSelected: { color: colors.textOnPrimary },
   chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   chip: {
     flexDirection: 'row',
@@ -367,13 +372,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm + 4,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     gap: 5,
   },
-  chipSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  chipText: { ...Typography.caption, color: Colors.textSecondary, fontSize: 12 },
-  chipTextSelected: { color: Colors.textOnPrimary },
+  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  chipText: { ...Typography.caption, color: colors.textSecondary, fontSize: 12 },
+  chipTextSelected: { color: colors.textOnPrimary },
 
   // Schedule type selector
   scheduleTypeRow: { flexDirection: 'row', gap: Spacing.sm },
@@ -384,15 +389,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xs,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     gap: 4,
   },
-  scheduleTypeBtnSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  scheduleTypeText: { ...Typography.button, fontSize: 13, color: Colors.textSecondary },
-  scheduleTypeTextSelected: { color: Colors.textOnPrimary },
-  scheduleTypeDesc: { ...Typography.caption, fontSize: 10, color: Colors.textLight, textAlign: 'center' },
-  scheduleTypeDescSelected: { color: Colors.primaryLight },
+  scheduleTypeBtnSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  scheduleTypeText: { ...Typography.button, fontSize: 13, color: colors.textSecondary },
+  scheduleTypeTextSelected: { color: colors.textOnPrimary },
+  scheduleTypeDesc: { ...Typography.caption, fontSize: 10, color: colors.textLight, textAlign: 'center' },
+  scheduleTypeDescSelected: { color: colors.primaryLight },
 
   // Weekly days
   daysRow: { flexDirection: 'row', gap: Spacing.sm },
@@ -403,14 +408,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: BorderRadius.full,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
-  dayCircleSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  dayText: { ...Typography.button, fontSize: 12, color: Colors.textSecondary },
-  dayTextSelected: { color: Colors.textOnPrimary },
+  dayCircleSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  dayText: { ...Typography.button, fontSize: 12, color: colors.textSecondary },
+  dayTextSelected: { color: colors.textOnPrimary },
   selectAll: { alignSelf: 'flex-end', marginTop: Spacing.xs, paddingVertical: 4 },
-  selectAllText: { ...Typography.caption, color: Colors.primary, fontWeight: '600' },
+  selectAllText: { ...Typography.caption, color: colors.primary, fontWeight: '600' },
 
   // Cycle days
   cycleDaysRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
@@ -420,27 +425,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
     minWidth: 60,
     gap: 2,
   },
-  cycleDayBtnSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  cycleDayNum: { ...Typography.subtitle, fontSize: 16, color: Colors.textSecondary },
-  cycleDayNumSelected: { color: Colors.textOnPrimary },
-  cycleDayLabel: { ...Typography.caption, fontSize: 10, color: Colors.textLight },
-  cycleDayLabelSelected: { color: Colors.primaryLight },
+  cycleDayBtnSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  cycleDayNum: { ...Typography.subtitle, fontSize: 16, color: colors.textSecondary },
+  cycleDayNumSelected: { color: colors.textOnPrimary },
+  cycleDayLabel: { ...Typography.caption, fontSize: 10, color: colors.textLight },
+  cycleDayLabelSelected: { color: colors.primaryLight },
 
   // Interval
   intervalRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   intervalInput: { flex: 0, width: 80, textAlign: 'center' },
-  intervalUnit: { ...Typography.body, fontWeight: '500', color: Colors.textSecondary },
+  intervalUnit: { ...Typography.body, fontWeight: '500', color: colors.textSecondary },
 
   // Schedule hint
   scheduleHint: {
     ...Typography.caption,
     fontSize: 11,
-    color: Colors.textLight,
+    color: colors.textLight,
     marginTop: Spacing.sm,
     fontStyle: 'italic',
   },
@@ -448,10 +453,10 @@ const styles = StyleSheet.create({
   saveButton: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderRadius: BorderRadius.pill,
     paddingVertical: Spacing.md,
     marginTop: Spacing.xl,
   },
-  saveButtonText: { ...Typography.button, color: Colors.textOnPrimary },
+  saveButtonText: { ...Typography.button, color: colors.textOnPrimary },
 });

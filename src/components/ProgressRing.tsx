@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Typography, Spacing } from '../constants/theme';
+import { Typography, Spacing } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface ProgressRingProps {
   completed: number;
@@ -9,11 +10,13 @@ interface ProgressRingProps {
 }
 
 export function ProgressRing({ completed, total, size = 100 }: ProgressRingProps) {
+  const { colors } = useTheme();
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const borderWidth = Math.max(Math.round(size * 0.08), 3);
+  const fontSize = Math.max(Math.round(size * 0.28), 12);
 
   return (
     <View style={[styles.container, { width: size, height: size }]}>
-      {/* Background ring */}
       <View
         style={[
           styles.ring,
@@ -21,11 +24,11 @@ export function ProgressRing({ completed, total, size = 100 }: ProgressRingProps
             width: size,
             height: size,
             borderRadius: size / 2,
-            borderColor: Colors.surfaceSecondary,
+            borderWidth,
+            borderColor: colors.surfaceSecondary,
           },
         ]}
       />
-      {/* Progress ring */}
       <View
         style={[
           styles.ring,
@@ -33,18 +36,15 @@ export function ProgressRing({ completed, total, size = 100 }: ProgressRingProps
             width: size,
             height: size,
             borderRadius: size / 2,
-            borderColor: Colors.primary,
+            borderWidth,
+            borderColor: colors.primary,
             opacity: Math.max(percentage / 100, 0.15),
           },
         ]}
       />
-      {/* Center content */}
-      <View style={styles.center}>
-        <Text style={styles.percentage}>{percentage}%</Text>
-        <Text style={styles.fraction}>
-          {completed}/{total}
-        </Text>
-      </View>
+      <Text style={[styles.label, { fontSize, color: colors.text }]}>
+        {completed}<Text style={[styles.separator, { fontSize: fontSize * 0.7, color: colors.textLight }]}>/</Text>{total}
+      </Text>
     </View>
   );
 }
@@ -56,20 +56,12 @@ const styles = StyleSheet.create({
   },
   ring: {
     position: 'absolute',
-    borderWidth: 6,
   },
-  center: {
-    alignItems: 'center',
-  },
-  percentage: {
-    fontSize: 24,
+  label: {
     fontWeight: '700',
-    color: Colors.text,
     letterSpacing: -0.5,
   },
-  fraction: {
-    ...Typography.caption,
-    marginTop: 2,
-    fontSize: 11,
+  separator: {
+    fontWeight: '400',
   },
 });

@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius } from '../../src/constants/theme';
+import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
 import { useRoutine } from '../../src/hooks/useRoutine';
 import { useProducts } from '../../src/hooks/useProducts';
 import { ProgressRing } from '../../src/components/ProgressRing';
@@ -50,7 +51,9 @@ export default function TodayScreen() {
     isLoading,
     reload,
   } = useRoutine();
-  const { allConflicts } = useProducts();
+  const { allConflicts, getProductsForDate } = useProducts();
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
 
   const isMorningTime = useMemo(() => new Date().getHours() < 13, []);
   const [showMorning, setShowMorning] = useState(isMorningTime);
@@ -59,6 +62,7 @@ export default function TodayScreen() {
 
   const morningSteps = useMemo(() => getTodaySteps('morning', selectedDate), [getTodaySteps, selectedDate]);
   const eveningSteps = useMemo(() => getTodaySteps('evening', selectedDate), [getTodaySteps, selectedDate]);
+  const todaysProducts = useMemo(() => getProductsForDate(selectedDate), [getProductsForDate, selectedDate]);
 
   const hasAnySteps = morningSteps.length > 0 || eveningSteps.length > 0;
 
@@ -84,13 +88,15 @@ export default function TodayScreen() {
   return (
     <ScrollView
       style={styles.container}
-      contentContainerStyle={styles.content}
       refreshControl={
-        <RefreshControl refreshing={isLoading} onRefresh={reload} tintColor={Colors.primary} />
+        <RefreshControl refreshing={isLoading} onRefresh={reload} tintColor={colors.primary} />
       }
     >
-      {/* ── Week Bar ─────────────────────────────────────────── */}
+      {/* ── Week Bar (full-width) ──────────────────────────────── */}
       <WeekBar selectedDate={selectedDate} onDateSelect={setSelectedDate} />
+
+      {/* ── Padded content ─────────────────────────────────────── */}
+      <View style={styles.content}>
 
       {/* ── Header ─────────────────────────────────────────── */}
       <View style={styles.header}>
@@ -137,15 +143,61 @@ export default function TodayScreen() {
             />
           )}
 
+          {/* ── Today's Products ─────────────────────────────────── */}
+          {todaysProducts.length > 0 && (
+            <View style={styles.productsSection}>
+              <View style={styles.productsSectionHeader}>
+                <Ionicons name="bag-outline" size={16} color={colors.primary} />
+                <Text style={styles.productsSectionTitle}>
+                  Today's Products ({todaysProducts.length})
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.productsScroll}
+              >
+                {todaysProducts.map((product) => {
+                  const category = CATEGORY_INFO[product.step_category];
+                  return (
+                    <TouchableOpacity
+                      key={product.id}
+                      style={styles.productChip}
+                      onPress={() => router.push({ pathname: '/product-detail', params: { productId: product.id } })}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.productChipIcon, { backgroundColor: category.color + '18' }]}>
+                        <Ionicons name={category.icon as any} size={14} color={category.color} />
+                      </View>
+                      <View style={styles.productChipText}>
+                        <Text style={styles.productChipName} numberOfLines={1}>{product.name}</Text>
+                        {product.brand ? (
+                          <Text style={styles.productChipBrand} numberOfLines={1}>{product.brand}</Text>
+                        ) : null}
+                      </View>
+                      <View style={styles.productChipTimeBadge}>
+                        <Ionicons
+                          name={product.time_of_day === 'morning' ? 'sunny-outline' : product.time_of_day === 'evening' ? 'moon-outline' : 'time-outline'}
+                          size={10}
+                          color={colors.textLight}
+                        />
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
           {/* ── Action Cards ───────────────────────────────────── */}
           <View style={styles.actionCardsRow}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push('/(tabs)/explore')}
+              onPress={() => router.push('/(tabs)/products')}
               activeOpacity={0.7}
             >
-              <View style={[styles.actionCardIcon, { backgroundColor: Colors.accent + '20' }]}>
-                <Ionicons name="search" size={24} color={Colors.accent} />
+              <View style={[styles.actionCardIcon, { backgroundColor: colors.accent + '20' }]}>
+                <Ionicons name="search" size={24} color={colors.accent} />
               </View>
               <Text style={styles.actionCardTitle}>Explore</Text>
               <Text style={styles.actionCardSubtitle}>Discover products</Text>
@@ -156,8 +208,8 @@ export default function TodayScreen() {
               onPress={() => router.push('/(tabs)/journal')}
               activeOpacity={0.7}
             >
-              <View style={[styles.actionCardIcon, { backgroundColor: Colors.primary + '20' }]}>
-                <Ionicons name="stats-chart" size={24} color={Colors.primary} />
+              <View style={[styles.actionCardIcon, { backgroundColor: colors.primary + '20' }]}>
+                <Ionicons name="stats-chart" size={24} color={colors.primary} />
               </View>
               <Text style={styles.actionCardTitle}>Track Progress</Text>
               <Text style={styles.actionCardSubtitle}>View your journey</Text>
@@ -167,6 +219,7 @@ export default function TodayScreen() {
       )}
 
       <View style={styles.bottomSpacer} />
+      </View>
     </ScrollView>
   );
 }
@@ -190,6 +243,9 @@ function RoutineSection({
   onSkipStep: (id: string) => void;
   onFinish: () => void;
 }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+
   const completed = steps.filter((s) => s.isCompleted).length;
   const skipped = steps.filter((s) => s.isSkipped).length;
   const actioned = completed + skipped;
@@ -221,7 +277,7 @@ function RoutineSection({
             <Ionicons
               name={(allDone ? 'checkmark-done' : getTimeIcon(timeOfDay)) as any}
               size={20}
-              color={Colors.textOnPrimary}
+              color={colors.textOnPrimary}
             />
           </View>
           <View style={{ flex: 1 }}>
@@ -234,7 +290,7 @@ function RoutineSection({
           <Ionicons
             name={isOpen ? 'chevron-up' : 'chevron-down'}
             size={18}
-            color={Colors.textLight}
+            color={colors.textLight}
           />
         </View>
       </TouchableOpacity>
@@ -266,7 +322,7 @@ function RoutineSection({
                 onPress={onFinish}
                 activeOpacity={0.7}
               >
-                <Ionicons name="checkmark-done-outline" size={18} color={Colors.primary} />
+                <Ionicons name="checkmark-done-outline" size={18} color={colors.primary} />
                 <Text style={styles.finishBtnText}>Finish Routine</Text>
               </TouchableOpacity>
             </>
@@ -278,12 +334,12 @@ function RoutineSection({
               <View style={styles.primaryDivider} />
               <View style={styles.summaryRow}>
                 <View style={styles.summaryItem}>
-                  <View style={[styles.summaryDot, { backgroundColor: Colors.primary }]} />
+                  <View style={[styles.summaryDot, { backgroundColor: colors.primary }]} />
                   <Text style={styles.summaryText}>{completed} completed</Text>
                 </View>
                 {skipped > 0 && (
                   <View style={styles.summaryItem}>
-                    <View style={[styles.summaryDot, { backgroundColor: Colors.textLight }]} />
+                    <View style={[styles.summaryDot, { backgroundColor: colors.textLight }]} />
                     <Text style={styles.summaryText}>{skipped} skipped</Text>
                   </View>
                 )}
@@ -309,6 +365,9 @@ function PrimaryStepRow({
   onSkip: (id: string) => void;
   isLast: boolean;
 }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+
   const category = CATEGORY_INFO[step.category];
   const isActioned = step.isCompleted || step.isSkipped;
 
@@ -325,10 +384,10 @@ function PrimaryStepRow({
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
         {step.isCompleted && (
-          <Ionicons name="checkmark" size={14} color={Colors.textOnPrimary} />
+          <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />
         )}
         {step.isSkipped && (
-          <Ionicons name="remove" size={14} color={Colors.textLight} />
+          <Ionicons name="remove" size={14} color={colors.textLight} />
         )}
         {!isActioned && <View style={styles.pCheckInner} />}
       </TouchableOpacity>
@@ -371,8 +430,8 @@ function PrimaryStepRow({
           styles.pCategoryDot,
           {
             backgroundColor: isActioned
-              ? Colors.textLight
-              : category?.color || Colors.textLight,
+              ? colors.textLight
+              : category?.color || colors.textLight,
           },
         ]}
       />
@@ -382,10 +441,10 @@ function PrimaryStepRow({
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   content: {
     padding: Spacing.md + 4,
@@ -398,6 +457,7 @@ const styles = StyleSheet.create({
   },
   date: {
     ...Typography.caption,
+    color: colors.textLight,
     fontSize: 12,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
@@ -405,15 +465,16 @@ const styles = StyleSheet.create({
   },
   greeting: {
     ...Typography.title,
+    color: colors.text,
     fontSize: 30,
   },
 
   // ── Routine section (collapsible) ───────────────────
   routineSection: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     overflow: 'hidden',
     marginBottom: Spacing.md,
   },
@@ -436,10 +497,12 @@ const styles = StyleSheet.create({
   },
   routineTitle: {
     ...Typography.subtitle,
+    color: colors.text,
     fontSize: 18,
   },
   routineSubtitle: {
     ...Typography.caption,
+    color: colors.textLight,
     marginTop: 2,
     fontSize: 12,
   },
@@ -448,16 +511,16 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
   timeIconCircleDone: {
-    backgroundColor: Colors.success,
+    backgroundColor: colors.success,
   },
   primaryDivider: {
     height: 1,
-    backgroundColor: Colors.divider,
+    backgroundColor: colors.divider,
   },
   primaryEmpty: {
     alignItems: 'center',
@@ -466,6 +529,7 @@ const styles = StyleSheet.create({
   },
   primaryEmptyText: {
     ...Typography.bodySmall,
+    color: colors.textSecondary,
   },
   primarySteps: {
     paddingHorizontal: Spacing.sm,
@@ -480,31 +544,31 @@ const styles = StyleSheet.create({
   },
   pStepRowBorder: {
     borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
+    borderBottomColor: colors.divider,
   },
   pCheck: {
     width: 26,
     height: 26,
     borderRadius: 13,
     borderWidth: 2,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: Spacing.sm + 4,
   },
   pCheckDone: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   pCheckSkipped: {
-    backgroundColor: Colors.surfaceSecondary,
-    borderColor: Colors.textLight,
+    backgroundColor: colors.surfaceSecondary,
+    borderColor: colors.textLight,
   },
   pCheckInner: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: Colors.border,
+    backgroundColor: colors.border,
   },
   pStepContent: {
     flex: 1,
@@ -512,19 +576,21 @@ const styles = StyleSheet.create({
   },
   pStepName: {
     ...Typography.body,
+    color: colors.text,
     fontWeight: '500',
     fontSize: 15,
   },
   pStepNameDone: {
     textDecorationLine: 'line-through',
-    color: Colors.textLight,
+    color: colors.textLight,
   },
   pStepNameSkipped: {
-    color: Colors.textLight,
+    color: colors.textLight,
     fontStyle: 'italic',
   },
   pStepMeta: {
     ...Typography.caption,
+    color: colors.textLight,
     marginTop: 1,
     fontSize: 11,
   },
@@ -533,13 +599,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.sm + 2,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     marginRight: Spacing.sm,
   },
   skipBtnText: {
     ...Typography.caption,
     fontSize: 11,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
     fontWeight: '500',
   },
   pCategoryDot: {
@@ -559,7 +625,7 @@ const styles = StyleSheet.create({
   finishBtnText: {
     ...Typography.button,
     fontSize: 14,
-    color: Colors.primary,
+    color: colors.primary,
   },
 
   // Completion summary
@@ -582,7 +648,66 @@ const styles = StyleSheet.create({
   },
   summaryText: {
     ...Typography.caption,
+    color: colors.textLight,
     fontSize: 11,
+  },
+
+  // Today's Products
+  productsSection: {
+    marginTop: Spacing.lg,
+  },
+  productsSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  productsSectionTitle: {
+    ...Typography.label,
+    fontSize: 12,
+    color: colors.primary,
+  },
+  productsScroll: {
+    gap: Spacing.sm,
+    paddingRight: Spacing.sm,
+  },
+  productChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.sm + 2,
+    paddingRight: Spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: Spacing.sm,
+    minWidth: 160,
+    maxWidth: 220,
+  },
+  productChipIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  productChipText: {
+    flex: 1,
+  },
+  productChipName: {
+    ...Typography.body,
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  productChipBrand: {
+    ...Typography.caption,
+    color: colors.textLight,
+    fontSize: 10,
+    marginTop: 1,
+  },
+  productChipTimeBadge: {
+    marginLeft: 2,
   },
 
   // Action cards
@@ -593,11 +718,11 @@ const styles = StyleSheet.create({
   },
   actionCard: {
     flex: 1,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
     padding: Spacing.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     alignItems: 'center',
   },
   actionCardIcon: {
@@ -610,13 +735,14 @@ const styles = StyleSheet.create({
   },
   actionCardTitle: {
     ...Typography.body,
+    color: colors.text,
     fontWeight: '600',
     marginBottom: 2,
   },
   actionCardSubtitle: {
     ...Typography.caption,
     fontSize: 11,
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
   },
 
   // Bottom

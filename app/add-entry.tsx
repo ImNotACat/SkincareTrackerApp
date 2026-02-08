@@ -15,7 +15,8 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Colors, Typography, Spacing, BorderRadius } from '../src/constants/theme';
+import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
+import { useTheme } from '../src/contexts/ThemeContext';
 import { useJournal } from '../src/hooks/useJournal';
 
 type EntryMode = 'comment' | 'photo';
@@ -23,6 +24,8 @@ type EntryMode = 'comment' | 'photo';
 export default function AddEntryScreen() {
   const router = useRouter();
   const { addEntry } = useJournal();
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
 
   const [mode, setMode] = useState<EntryMode>('comment');
   const [text, setText] = useState('');
@@ -112,7 +115,7 @@ export default function AddEntryScreen() {
             <Ionicons
               name="chatbubble-outline"
               size={16}
-              color={mode === 'comment' ? Colors.textOnPrimary : Colors.text}
+              color={mode === 'comment' ? colors.textOnPrimary : colors.text}
             />
             <Text
               style={[styles.modePillText, mode === 'comment' && styles.modePillTextActive]}
@@ -128,7 +131,7 @@ export default function AddEntryScreen() {
             <Ionicons
               name="camera-outline"
               size={16}
-              color={mode === 'photo' ? Colors.textOnPrimary : Colors.text}
+              color={mode === 'photo' ? colors.textOnPrimary : colors.text}
             />
             <Text
               style={[styles.modePillText, mode === 'photo' && styles.modePillTextActive]}
@@ -153,13 +156,13 @@ export default function AddEntryScreen() {
               <View style={styles.photoActions}>
                 <TouchableOpacity style={styles.photoBtn} onPress={takePhoto} activeOpacity={0.7}>
                   <View style={styles.photoBtnIcon}>
-                    <Ionicons name="camera" size={24} color={Colors.primary} />
+                    <Ionicons name="camera" size={24} color={colors.primary} />
                   </View>
                   <Text style={styles.photoBtnLabel}>Take Photo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.photoBtn} onPress={pickImage} activeOpacity={0.7}>
                   <View style={styles.photoBtnIcon}>
-                    <Ionicons name="images" size={24} color={Colors.primary} />
+                    <Ionicons name="images" size={24} color={colors.primary} />
                   </View>
                   <Text style={styles.photoBtnLabel}>Choose from Library</Text>
                 </TouchableOpacity>
@@ -179,7 +182,7 @@ export default function AddEntryScreen() {
               ? 'Add a caption…'
               : 'How is your skin today? Any observations…'
           }
-          placeholderTextColor={Colors.textLight}
+          placeholderTextColor={colors.textLight}
           multiline={true}
           textAlignVertical="top"
         />
@@ -207,7 +210,7 @@ export default function AddEntryScreen() {
           activeOpacity={0.8}
         >
           {isSaving ? (
-            <ActivityIndicator color={Colors.textOnPrimary} />
+            <ActivityIndicator color={colors.textOnPrimary} />
           ) : (
             <Text style={styles.saveBtnText}>Save Entry</Text>
           )}
@@ -236,11 +239,11 @@ const QUICK_TAGS = [
 
 // ─── Styles ─────────────────────────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   flex: { flex: 1 },
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
+    backgroundColor: colors.background,
   },
   content: {
     padding: Spacing.md + 4,
@@ -250,6 +253,7 @@ const styles = StyleSheet.create({
   // Labels
   label: {
     ...Typography.label,
+    color: colors.textSecondary,
     marginBottom: Spacing.sm,
     marginTop: Spacing.md + 4,
   },
@@ -267,20 +271,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
   },
   modePillActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   modePillText: {
     ...Typography.body,
+    color: colors.text,
     fontSize: 14,
     fontWeight: '500',
   },
   modePillTextActive: {
-    color: Colors.textOnPrimary,
+    color: colors.textOnPrimary,
   },
 
   // Photo section
@@ -292,24 +297,24 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingVertical: Spacing.lg,
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     gap: Spacing.sm,
   },
   photoBtnIcon: {
     width: 52,
     height: 52,
     borderRadius: 26,
-    backgroundColor: Colors.primary + '14',
+    backgroundColor: colors.primary + '14',
     alignItems: 'center',
     justifyContent: 'center',
   },
   photoBtnLabel: {
     ...Typography.bodySmall,
     fontWeight: '500',
-    color: Colors.text,
+    color: colors.text,
     fontSize: 13,
   },
   imagePreviewWrap: {
@@ -321,7 +326,7 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 4 / 3,
     borderRadius: BorderRadius.md,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor: colors.surfaceSecondary,
   },
   removeImageBtn: {
     position: 'absolute',
@@ -333,13 +338,14 @@ const styles = StyleSheet.create({
 
   // Text input
   textInput: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     padding: Spacing.md,
     minHeight: 110,
     ...Typography.body,
+    color: colors.text,
     fontSize: 14,
   },
 
@@ -353,19 +359,19 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.xs + 2,
     paddingHorizontal: Spacing.sm + 4,
     borderRadius: BorderRadius.pill,
-    backgroundColor: Colors.surfaceSecondary,
+    backgroundColor: colors.surfaceSecondary,
   },
   tagText: {
     ...Typography.bodySmall,
     fontSize: 12,
     fontWeight: '500',
-    color: Colors.textSecondary,
+    color: colors.textSecondary,
   },
 
   // Save button
   saveBtn: {
     marginTop: Spacing.lg,
-    backgroundColor: Colors.primary,
+    backgroundColor: colors.primary,
     borderRadius: BorderRadius.pill,
     paddingVertical: Spacing.sm + 6,
     alignItems: 'center',
@@ -376,6 +382,6 @@ const styles = StyleSheet.create({
   },
   saveBtnText: {
     ...Typography.button,
-    color: Colors.textOnPrimary,
+    color: colors.textOnPrimary,
   },
 });

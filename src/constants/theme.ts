@@ -103,6 +103,82 @@ export const BorderRadius = {
   full: 9999,
 } as const;
 
+// ─── Pink Theme Colors ──────────────────────────────────────────────────────
+// Bright, punchy pink palette — vibrant and playful
+
+export const PinkColors = {
+  // Primary — hot pink
+  primary: '#FF4081',
+  primaryLight: '#FF80AB',
+  primaryDark: '#E91E63',
+
+  // Accent — warm coral
+  accent: '#FF8A65',
+  accentLight: '#FFAB91',
+  accentDark: '#F4511E',
+
+  // Background — soft blush white
+  background: '#FFF5F7',
+  surface: '#FFFFFF',
+  surfaceSecondary: '#FFECF0',
+
+  // Text
+  text: '#2C2C2C',
+  textSecondary: '#6E6E6E',
+  textLight: '#B0A0A8',
+  textOnPrimary: '#FFFFFF',
+
+  // Semantic
+  success: '#66BB6A',
+  warning: '#FFB74D',
+  error: '#EF5350',
+  info: '#7B9AAF',
+
+  // Utility
+  border: '#FFD6DE',
+  divider: '#FFE4EA',
+  shadow: 'rgba(255, 64, 129, 0.08)',
+  overlay: 'rgba(44, 44, 44, 0.35)',
+} as const;
+
+// ─── Teal Theme Colors ──────────────────────────────────────────────────────
+// Deep ocean teal palette — sophisticated and refreshing
+
+export const TealColors = {
+  // Primary — deep teal
+  primary: '#00796B',
+  primaryLight: '#4DB6AC',
+  primaryDark: '#004D40',
+
+  // Accent — warm amber/gold
+  accent: '#FFB300',
+  accentLight: '#FFD54F',
+  accentDark: '#FF8F00',
+
+  // Background — cool, airy off-white
+  background: '#F0F5F5',
+  surface: '#FFFFFF',
+  surfaceSecondary: '#E0EDED',
+
+  // Text
+  text: '#1A2E35',
+  textSecondary: '#546E7A',
+  textLight: '#90A4AE',
+  textOnPrimary: '#FFFFFF',
+
+  // Semantic
+  success: '#2E7D32',
+  warning: '#F9A825',
+  error: '#D32F2F',
+  info: '#0288D1',
+
+  // Utility
+  border: '#C8D8DC',
+  divider: '#DAE4E8',
+  shadow: 'rgba(0, 77, 64, 0.08)',
+  overlay: 'rgba(26, 46, 53, 0.4)',
+} as const;
+
 // ─── Dark Theme Colors ────────────────────────────────────────────────────────
 
 export const DarkColors = {

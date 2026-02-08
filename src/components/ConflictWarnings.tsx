@@ -6,10 +6,9 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing, BorderRadius } from '../constants/theme';
+import { Typography, Spacing, BorderRadius } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import type { DetectedConflict, ConflictSeverity } from '../lib/ingredient-conflicts';
-
-// ─── Severity Config ────────────────────────────────────────────────────────
 
 const SEVERITY_CONFIG: Record<ConflictSeverity, { color: string; bg: string; icon: string; label: string }> = {
   high: { color: '#C47070', bg: '#C4707012', icon: 'alert-circle', label: 'Avoid' },
@@ -17,9 +16,9 @@ const SEVERITY_CONFIG: Record<ConflictSeverity, { color: string; bg: string; ico
   low: { color: '#7B9AAF', bg: '#7B9AAF12', icon: 'information-circle', label: 'Note' },
 };
 
-// ─── Single Conflict Card ───────────────────────────────────────────────────
-
 function ConflictCard({ conflict }: { conflict: DetectedConflict }) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   const [expanded, setExpanded] = useState(false);
   const sev = SEVERITY_CONFIG[conflict.rule.severity];
 
@@ -46,7 +45,7 @@ function ConflictCard({ conflict }: { conflict: DetectedConflict }) {
         <View style={styles.cardBody}>
           <Text style={styles.explanation}>{conflict.rule.explanation}</Text>
           <View style={styles.suggestionRow}>
-            <Ionicons name="bulb-outline" size={14} color={Colors.primary} />
+            <Ionicons name="bulb-outline" size={14} color={colors.primary} />
             <Text style={styles.suggestion}>{conflict.rule.suggestion}</Text>
           </View>
         </View>
@@ -59,13 +58,9 @@ function ConflictCard({ conflict }: { conflict: DetectedConflict }) {
   );
 }
 
-// ─── Conflict Warnings List ─────────────────────────────────────────────────
-
 interface ConflictWarningsProps {
   conflicts: DetectedConflict[];
-  /** Optional max items to show initially (shows "see more" if exceeded) */
   maxVisible?: number;
-  /** If true, renders a compact inline summary instead of full cards */
   compact?: boolean;
 }
 
@@ -74,6 +69,8 @@ export function ConflictWarnings({
   maxVisible = 3,
   compact = false,
 }: ConflictWarningsProps) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
   const [showAll, setShowAll] = useState(false);
 
   if (conflicts.length === 0) return null;
@@ -102,13 +99,13 @@ export function ConflictWarnings({
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Ionicons name="flask" size={16} color={Colors.warning} />
+        <Ionicons name="flask" size={16} color={colors.warning} />
         <Text style={styles.headerText}>
           Ingredient Conflicts ({conflicts.length})
         </Text>
       </View>
 
-      {visible.map((conflict, i) => (
+      {visible.map((conflict) => (
         <ConflictCard key={`${conflict.rule.id}-${conflict.productA.id}-${conflict.productB.id}`} conflict={conflict} />
       ))}
 
@@ -117,16 +114,14 @@ export function ConflictWarnings({
           <Text style={styles.seeMoreText}>
             Show {remaining} more conflict{remaining !== 1 ? 's' : ''}
           </Text>
-          <Ionicons name="chevron-down" size={14} color={Colors.primary} />
+          <Ionicons name="chevron-down" size={14} color={colors.primary} />
         </TouchableOpacity>
       )}
     </View>
   );
 }
 
-// ─── Styles ─────────────────────────────────────────────────────────────────
-
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     marginTop: Spacing.md,
   },
@@ -139,15 +134,13 @@ const styles = StyleSheet.create({
   headerText: {
     ...Typography.label,
     fontSize: 12,
-    color: Colors.warning,
+    color: colors.warning,
   },
-
-  // Card
   card: {
-    backgroundColor: Colors.surface,
+    backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: colors.border,
     borderLeftWidth: 3,
     padding: Spacing.md,
     marginBottom: Spacing.sm,
@@ -164,11 +157,13 @@ const styles = StyleSheet.create({
     ...Typography.body,
     fontWeight: '600',
     fontSize: 14,
+    color: colors.text,
   },
   cardProducts: {
     ...Typography.caption,
     fontSize: 11,
     marginTop: 1,
+    color: colors.textLight,
   },
   severityBadge: {
     paddingHorizontal: Spacing.sm + 2,
@@ -179,25 +174,24 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
   },
-
-  // Expanded body
   cardBody: {
     marginTop: Spacing.sm + 4,
     paddingTop: Spacing.sm + 4,
     borderTopWidth: 1,
-    borderTopColor: Colors.divider,
+    borderTopColor: colors.divider,
   },
   explanation: {
     ...Typography.bodySmall,
     fontSize: 13,
     lineHeight: 20,
+    color: colors.textSecondary,
   },
   suggestionRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginTop: Spacing.sm + 2,
     gap: 6,
-    backgroundColor: Colors.primary + '0A',
+    backgroundColor: colors.primary + '0A',
     padding: Spacing.sm + 2,
     borderRadius: BorderRadius.sm,
   },
@@ -206,17 +200,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     flex: 1,
-    color: Colors.text,
+    color: colors.text,
     fontWeight: '500',
   },
   tapHint: {
     ...Typography.caption,
     fontSize: 10,
     marginTop: Spacing.xs + 2,
-    color: Colors.textLight,
+    color: colors.textLight,
   },
-
-  // See more
   seeMore: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -226,11 +218,9 @@ const styles = StyleSheet.create({
   },
   seeMoreText: {
     ...Typography.bodySmall,
-    color: Colors.primary,
+    color: colors.primary,
     fontWeight: '500',
   },
-
-  // Compact mode
   compactWrap: {
     marginTop: Spacing.sm,
   },

@@ -1,7 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Colors, Typography, Spacing } from '../constants/theme';
+import { Typography, Spacing } from '../constants/theme';
+import { useTheme } from '../contexts/ThemeContext';
 
 interface EmptyStateProps {
   icon: string;
@@ -10,10 +11,13 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({ icon, title, message }: EmptyStateProps) {
+  const { colors } = useTheme();
+  const styles = createStyles(colors);
+
   return (
     <View style={styles.container}>
       <View style={styles.iconCircle}>
-        <Ionicons name={icon as any} size={36} color={Colors.primary} />
+        <Ionicons name={icon as any} size={36} color={colors.primary} />
       </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
@@ -21,7 +25,7 @@ export function EmptyState({ icon, title, message }: EmptyStateProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any) => StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -32,7 +36,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: Colors.primary + '12',
+    backgroundColor: colors.primary + '12',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
@@ -41,6 +45,7 @@ const styles = StyleSheet.create({
     ...Typography.subtitle,
     fontSize: 18,
     textAlign: 'center',
+    color: colors.text,
   },
   message: {
     ...Typography.bodySmall,
@@ -48,5 +53,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     maxWidth: 280,
     lineHeight: 20,
+    color: colors.textSecondary,
   },
 });
