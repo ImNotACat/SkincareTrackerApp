@@ -1,7 +1,4 @@
 {
-  "cli": {
-    "version": "latest"
-  },
   "build": {
     "development": {
       "developmentClient": true,
