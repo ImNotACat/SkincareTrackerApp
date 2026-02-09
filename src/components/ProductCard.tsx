@@ -4,7 +4,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
 import { CATEGORY_INFO, TIME_OF_DAY_USAGE_OPTIONS, DAYS_OF_WEEK } from '../constants/skincare';
-import { formatDateForDisplay } from '../lib/dateUtils';
 import type { Product } from '../types';
 
 interface ProductCardProps {
@@ -75,10 +74,22 @@ export function ProductCard({ product, onPress, onStop, onRestart }: ProductCard
           <Text style={[styles.name, !isActive && styles.nameInactive]} numberOfLines={1}>
             {product.name}
           </Text>
-          <View style={[styles.badge, isActive ? styles.badgeActive : styles.badgeInactive]}>
-            <Text style={[styles.badgeText, isActive ? styles.badgeTextActive : styles.badgeTextInactive]}>
-              {isActive ? 'Active' : 'Stopped'}
-            </Text>
+          <View style={styles.badgeRow}>
+            <View style={[styles.badge, isActive ? styles.badgeActive : styles.badgeInactive]}>
+              <Text style={[styles.badgeText, isActive ? styles.badgeTextActive : styles.badgeTextInactive]}>
+                {isActive ? 'Active' : 'Stopped'}
+              </Text>
+            </View>
+            {isActive && onStop && (
+              <TouchableOpacity onPress={() => onStop(product)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="pause-circle-outline" size={18} color={colors.warning} />
+              </TouchableOpacity>
+            )}
+            {!isActive && onRestart && (
+              <TouchableOpacity onPress={() => onRestart(product)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="play-circle-outline" size={18} color={colors.primary} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -114,24 +125,6 @@ export function ProductCard({ product, onPress, onStop, onRestart }: ProductCard
         {product.notes && (
           <Text style={styles.notes} numberOfLines={1}>{product.notes}</Text>
         )}
-
-        <View style={styles.bottomRow}>
-          <Text style={styles.dateText}>
-            {formatDateForDisplay(product.started_at)}
-            {product.stopped_at && `  —  ${formatDateForDisplay(product.stopped_at)}`}
-          </Text>
-
-          {isActive && onStop && (
-            <TouchableOpacity onPress={() => onStop(product)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="pause-circle-outline" size={18} color={colors.warning} />
-            </TouchableOpacity>
-          )}
-          {!isActive && onRestart && (
-            <TouchableOpacity onPress={() => onRestart(product)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Ionicons name="play-circle-outline" size={18} color={colors.primary} />
-            </TouchableOpacity>
-          )}
-        </View>
       </View>
     </TouchableOpacity>
   );
@@ -170,6 +163,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   name: { ...Typography.body, fontWeight: '600', flex: 1, marginRight: Spacing.sm, color: colors.text },
   nameInactive: { color: colors.textSecondary },
 
+  badgeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
   badge: { paddingHorizontal: Spacing.sm + 2, paddingVertical: 3, borderRadius: BorderRadius.pill },
   badgeActive: { backgroundColor: colors.primary + '20' },
   badgeInactive: { backgroundColor: colors.textLight + '20' },
@@ -193,7 +187,4 @@ const createStyles = (colors: any) => StyleSheet.create({
   pillTextWarning: { color: colors.error },
 
   notes: { ...Typography.caption, marginTop: Spacing.sm, color: colors.textSecondary, fontStyle: 'italic' },
-
-  bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.sm },
-  dateText: { ...Typography.caption, fontSize: 11, flex: 1, color: colors.textLight },
 });
