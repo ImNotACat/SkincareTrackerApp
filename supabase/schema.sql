@@ -99,15 +99,53 @@ CREATE TABLE IF NOT EXISTS completed_steps (
 CREATE INDEX IF NOT EXISTS idx_completed_steps_user_date ON completed_steps(user_id, date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_completed_steps_unique ON completed_steps(user_id, step_id, date);
 
--- ─── Products ───────────────────────────────────────────────────────────────
+-- ─── Product Catalog (shared across all users) ─────────────────────────────
+-- This is the community product database. Any authenticated user can browse it.
+-- When a user adds a product, it also gets added here so others can discover it.
+
+CREATE TABLE IF NOT EXISTS product_catalog (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+
+  -- Product definition
+  name TEXT NOT NULL,
+  brand TEXT,
+  size TEXT,
+  image_url TEXT,
+  source_url TEXT,
+
+  -- Category
+  step_category TEXT NOT NULL CHECK (step_category IN (
+    'cleanser', 'toner', 'serum', 'moisturizer', 'sunscreen',
+    'exfoliant', 'mask', 'eye_cream', 'lip_care', 'treatment', 'other'
+  )),
+
+  -- Ingredients
+  active_ingredients TEXT,
+  full_ingredients TEXT,
+
+  -- Metadata
+  times_added INTEGER NOT NULL DEFAULT 1,  -- how many users have added this product
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_catalog_name ON product_catalog USING gin (to_tsvector('english', name));
+CREATE INDEX IF NOT EXISTS idx_product_catalog_brand ON product_catalog(brand);
+CREATE INDEX IF NOT EXISTS idx_product_catalog_category ON product_catalog(step_category);
+CREATE INDEX IF NOT EXISTS idx_product_catalog_popular ON product_catalog(times_added DESC);
+
+-- ─── Products (user-specific) ───────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  catalog_id UUID REFERENCES product_catalog(id) ON DELETE SET NULL,  -- link to shared catalog
 
-  -- Core info
+  -- Core info (copied from catalog or entered manually)
   name TEXT NOT NULL,
   brand TEXT,
+  size TEXT,
   image_url TEXT,
   source_url TEXT,
 
@@ -148,6 +186,20 @@ CREATE TABLE IF NOT EXISTS products (
 
 CREATE INDEX IF NOT EXISTS idx_products_user ON products(user_id);
 CREATE INDEX IF NOT EXISTS idx_products_active ON products(user_id) WHERE stopped_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_products_catalog ON products(catalog_id);
+
+-- ─── Product Comments ───────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS product_comments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  product_id UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_comments_product ON product_comments(product_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_product_comments_user ON product_comments(user_id);
 
 -- ─── Journal Entries ────────────────────────────────────────────────────────
 
@@ -201,7 +253,9 @@ CREATE INDEX IF NOT EXISTS idx_wishlist_user ON wishlist(user_id);
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE routine_steps ENABLE ROW LEVEL SECURITY;
 ALTER TABLE completed_steps ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_catalog ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE product_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE journal_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wishlist ENABLE ROW LEVEL SECURITY;
 
@@ -242,6 +296,22 @@ CREATE POLICY "Users can delete own steps"
   ON routine_steps FOR DELETE
   USING (auth.uid() = user_id);
 
+-- Product Catalog: all authenticated users can read; any user can insert; only creator can update
+DROP POLICY IF EXISTS "Anyone can view catalog products" ON product_catalog;
+CREATE POLICY "Anyone can view catalog products"
+  ON product_catalog FOR SELECT
+  USING (true);  -- readable by all authenticated users (RLS is enabled so only authed users hit this)
+
+DROP POLICY IF EXISTS "Authenticated users can add to catalog" ON product_catalog;
+CREATE POLICY "Authenticated users can add to catalog"
+  ON product_catalog FOR INSERT
+  WITH CHECK (auth.uid() IS NOT NULL);
+
+DROP POLICY IF EXISTS "Creator can update catalog product" ON product_catalog;
+CREATE POLICY "Creator can update catalog product"
+  ON product_catalog FOR UPDATE
+  USING (auth.uid() = created_by);
+
 -- Products: users can CRUD their own products
 DROP POLICY IF EXISTS "Users can view own products" ON products;
 CREATE POLICY "Users can view own products"
@@ -277,6 +347,22 @@ CREATE POLICY "Users can insert own completions"
 DROP POLICY IF EXISTS "Users can delete own completions" ON completed_steps;
 CREATE POLICY "Users can delete own completions"
   ON completed_steps FOR DELETE
+  USING (auth.uid() = user_id);
+
+-- Product Comments: users can CRUD their own comments
+DROP POLICY IF EXISTS "Users can view own product comments" ON product_comments;
+CREATE POLICY "Users can view own product comments"
+  ON product_comments FOR SELECT
+  USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can insert own product comments" ON product_comments;
+CREATE POLICY "Users can insert own product comments"
+  ON product_comments FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can delete own product comments" ON product_comments;
+CREATE POLICY "Users can delete own product comments"
+  ON product_comments FOR DELETE
   USING (auth.uid() = user_id);
 
 -- Journal Entries: users can CRUD their own entries

@@ -7,12 +7,17 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Modal,
+  FlatList,
+  SafeAreaView,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useRoutine } from '../src/hooks/useRoutine';
+import { useProducts } from '../src/hooks/useProducts';
 import {
   CATEGORIES,
   CATEGORY_INFO,
@@ -21,16 +26,22 @@ import {
   TIME_OF_DAY_OPTIONS,
   SCHEDULE_TYPE_OPTIONS,
 } from '../src/constants/skincare';
-import type { StepCategory, DayOfWeek, TimeOfDay, ScheduleType } from '../src/types';
+import { useToast } from '../src/components/Toast';
+import type { StepCategory, DayOfWeek, TimeOfDay, ScheduleType, Product } from '../src/types';
 
 export default function AddStepScreen() {
   const router = useRouter();
   const { addStep, steps } = useRoutine();
+  const { products, activeProducts } = useProducts();
   const { colors } = useTheme();
+  const { showToast } = useToast();
   const styles = createStyles(colors);
 
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [name, setName] = useState('');
   const [productName, setProductName] = useState('');
+  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [productSearch, setProductSearch] = useState('');
   const [category, setCategory] = useState<StepCategory>('cleanser');
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('morning');
   const [notes, setNotes] = useState('');
@@ -56,6 +67,28 @@ export default function AddStepScreen() {
     );
   };
 
+  const handleSelectProduct = (product: Product) => {
+    setSelectedProduct(product);
+    setName(product.name);
+    setProductName(product.name);
+    setCategory(product.step_category);
+    setShowProductPicker(false);
+    setProductSearch('');
+  };
+
+  const handleClearProduct = () => {
+    setSelectedProduct(null);
+    setName('');
+    setProductName('');
+  };
+
+  const filteredProducts = productSearch.trim()
+    ? products.filter((p) =>
+        p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+        (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase()))
+      )
+    : products;
+
   const handleCycleLengthChange = (val: string) => {
     setCycleLength(val);
     const num = parseInt(val, 10);
@@ -67,28 +100,28 @@ export default function AddStepScreen() {
 
   const validate = (): boolean => {
     if (!name.trim()) {
-      Alert.alert('Missing Name', 'Please enter a name for this step.');
+      showToast('Missing Name', { message: 'Please enter a name for this step.', variant: 'warning' });
       return false;
     }
     if (scheduleType === 'weekly' && days.length === 0) {
-      Alert.alert('No Days Selected', 'Please select at least one day.');
+      showToast('No Days Selected', { message: 'Please select at least one day.', variant: 'warning' });
       return false;
     }
     if (scheduleType === 'cycle') {
       const len = parseInt(cycleLength, 10);
       if (!len || len < 2) {
-        Alert.alert('Invalid Cycle', 'Cycle length must be at least 2 days.');
+        showToast('Invalid Cycle', { message: 'Cycle length must be at least 2 days.', variant: 'warning' });
         return false;
       }
       if (cycleDays.length === 0) {
-        Alert.alert('No Days Selected', 'Please select at least one day in the cycle.');
+        showToast('No Days Selected', { message: 'Please select at least one day in the cycle.', variant: 'warning' });
         return false;
       }
     }
     if (scheduleType === 'interval') {
       const interval = parseInt(intervalDays, 10);
       if (!interval || interval < 1) {
-        Alert.alert('Invalid Interval', 'Interval must be at least 1 day.');
+        showToast('Invalid Interval', { message: 'Interval must be at least 1 day.', variant: 'warning' });
         return false;
       }
     }
@@ -121,23 +154,128 @@ export default function AddStepScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Product picker */}
+      <Text style={styles.label}>SELECT PRODUCT</Text>
+      {selectedProduct ? (
+        <View style={styles.selectedProductCard}>
+          {selectedProduct.image_url ? (
+            <Image source={{ uri: selectedProduct.image_url }} style={styles.selectedProductImage} resizeMode="cover" />
+          ) : (
+            <View style={[styles.selectedProductImagePlaceholder, { backgroundColor: CATEGORY_INFO[selectedProduct.step_category].color + '18' }]}>
+              <Ionicons name={CATEGORY_INFO[selectedProduct.step_category].icon as any} size={20} color={CATEGORY_INFO[selectedProduct.step_category].color} />
+            </View>
+          )}
+          <View style={styles.selectedProductInfo}>
+            <Text style={styles.selectedProductName} numberOfLines={1}>{selectedProduct.name}</Text>
+            {selectedProduct.brand && <Text style={styles.selectedProductBrand} numberOfLines={1}>{selectedProduct.brand}</Text>}
+          </View>
+          <TouchableOpacity onPress={handleClearProduct} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Ionicons name="close-circle" size={22} color={colors.textLight} />
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <TouchableOpacity
+          style={styles.productPickerBtn}
+          onPress={() => setShowProductPicker(true)}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="flask-outline" size={20} color={colors.textLight} />
+          <Text style={styles.productPickerBtnText}>Choose a product...</Text>
+          <Ionicons name="chevron-down" size={18} color={colors.textLight} />
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity
+        style={styles.addNewProductLink}
+        onPress={() => router.push('/add-product')}
+      >
+        <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+        <Text style={styles.addNewProductText}>Or add a new product</Text>
+      </TouchableOpacity>
+
+      {/* Optional step name override */}
       <Text style={styles.label}>STEP NAME</Text>
       <TextInput
         style={styles.input}
         value={name}
         onChangeText={setName}
-        placeholder="e.g., Vitamin C Serum"
+        placeholder={selectedProduct ? selectedProduct.name : 'e.g., Vitamin C Serum'}
         placeholderTextColor={colors.textLight}
       />
 
-      <Text style={styles.label}>PRODUCT NAME (OPTIONAL)</Text>
-      <TextInput
-        style={styles.input}
-        value={productName}
-        onChangeText={setProductName}
-        placeholder="e.g., The Ordinary Vitamin C 23%"
-        placeholderTextColor={colors.textLight}
-      />
+      {/* Product picker modal */}
+      <Modal
+        visible={showProductPicker}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowProductPicker(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Choose Product</Text>
+            <TouchableOpacity onPress={() => setShowProductPicker(false)}>
+              <Text style={styles.modalDoneText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.modalSearchContainer}>
+            <Ionicons name="search-outline" size={18} color={colors.textLight} />
+            <TextInput
+              style={styles.modalSearchInput}
+              value={productSearch}
+              onChangeText={setProductSearch}
+              placeholder="Search products..."
+              placeholderTextColor={colors.textLight}
+            />
+            {productSearch.length > 0 && (
+              <TouchableOpacity onPress={() => setProductSearch('')}>
+                <Ionicons name="close-circle" size={18} color={colors.textLight} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <FlatList
+            data={filteredProducts}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => {
+              const catInfo = CATEGORY_INFO[item.step_category];
+              return (
+                <TouchableOpacity
+                  style={styles.productListItem}
+                  onPress={() => handleSelectProduct(item)}
+                  activeOpacity={0.6}
+                >
+                  {item.image_url ? (
+                    <Image source={{ uri: item.image_url }} style={styles.productListImage} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.productListImagePlaceholder, { backgroundColor: catInfo.color + '18' }]}>
+                      <Ionicons name={catInfo.icon as any} size={18} color={catInfo.color} />
+                    </View>
+                  )}
+                  <View style={styles.productListInfo}>
+                    <Text style={styles.productListName} numberOfLines={1}>{item.name}</Text>
+                    <Text style={styles.productListMeta} numberOfLines={1}>
+                      {item.brand ? `${item.brand} · ` : ''}{catInfo.label}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+                </TouchableOpacity>
+              );
+            }}
+            ListEmptyComponent={
+              <View style={styles.emptyProducts}>
+                <Text style={styles.emptyProductsText}>No products found</Text>
+                <TouchableOpacity
+                  style={styles.emptyAddBtn}
+                  onPress={() => { setShowProductPicker(false); router.push('/add-product'); }}
+                >
+                  <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+                  <Text style={styles.emptyAddBtnText}>Add a product first</Text>
+                </TouchableOpacity>
+              </View>
+            }
+            contentContainerStyle={styles.productListContent}
+          />
+        </SafeAreaView>
+      </Modal>
 
       <Text style={styles.label}>TIME OF DAY</Text>
       <View style={styles.pillRow}>
@@ -449,6 +587,89 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginTop: Spacing.sm,
     fontStyle: 'italic',
   },
+
+  // Product picker
+  selectedProductCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+    padding: Spacing.sm + 2,
+    gap: Spacing.sm,
+  },
+  selectedProductImage: { width: 40, height: 40, borderRadius: BorderRadius.sm },
+  selectedProductImagePlaceholder: { width: 40, height: 40, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center' },
+  selectedProductInfo: { flex: 1 },
+  selectedProductName: { ...Typography.body, fontSize: 14, color: colors.text, fontWeight: '500' },
+  selectedProductBrand: { ...Typography.caption, fontSize: 12, color: colors.textSecondary },
+  productPickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: Spacing.md,
+    gap: Spacing.sm,
+  },
+  productPickerBtnText: { ...Typography.body, flex: 1, color: colors.textLight },
+  addNewProductLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
+  addNewProductText: { ...Typography.caption, color: colors.primary, fontWeight: '600' },
+
+  // Product picker modal
+  modalContainer: { flex: 1, backgroundColor: colors.background },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md + 4,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  modalTitle: { ...Typography.subtitle, fontSize: 18, color: colors.text },
+  modalDoneText: { ...Typography.button, fontSize: 16, color: colors.primary },
+  modalSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: BorderRadius.md,
+    marginHorizontal: Spacing.md + 4,
+    marginVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    gap: Spacing.sm,
+  },
+  modalSearchInput: { ...Typography.body, flex: 1, color: colors.text, padding: 0 },
+  productListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm + 4,
+    paddingHorizontal: Spacing.md + 4,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    gap: Spacing.sm + 2,
+  },
+  productListImage: { width: 44, height: 44, borderRadius: BorderRadius.sm },
+  productListImagePlaceholder: { width: 44, height: 44, borderRadius: BorderRadius.sm, alignItems: 'center', justifyContent: 'center' },
+  productListInfo: { flex: 1 },
+  productListName: { ...Typography.body, fontSize: 15, color: colors.text },
+  productListMeta: { ...Typography.caption, fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  productListContent: { paddingBottom: 40 },
+  emptyProducts: { padding: Spacing.xl, alignItems: 'center', gap: Spacing.md },
+  emptyProductsText: { ...Typography.body, color: colors.textLight },
+  emptyAddBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  emptyAddBtnText: { ...Typography.caption, color: colors.primary, fontWeight: '600' },
 
   saveButton: {
     alignItems: 'center',

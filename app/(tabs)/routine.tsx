@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DragList, { DragListRenderItemInfo } from 'react-native-draglist';
 import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
@@ -44,8 +45,15 @@ export default function RoutineScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  const { steps, deleteStep, reorderSteps } = useRoutine();
+  const { steps, deleteStep, reorderSteps, reload } = useRoutine();
   const [activeTab, setActiveTab] = useState<TimeOfDay>('morning');
+
+  // Reload routine data when screen gains focus (e.g., after adding/editing steps)
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload])
+  );
 
   const filteredSteps = useMemo(
     () =>

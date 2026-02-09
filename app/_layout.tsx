@@ -5,6 +5,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { ProductsProvider } from '../src/contexts/ProductsContext';
+import { ToastProvider } from '../src/components/Toast';
 
 function RootLayoutNav() {
   const { colors, theme } = useTheme();
@@ -91,7 +92,9 @@ export default function RootLayout() {
     <ThemeProvider>
       <AuthProvider>
         <ProductsProvider>
-          <RootLayoutNav />
+          <ToastProvider>
+            <RootLayoutNav />
+          </ToastProvider>
         </ProductsProvider>
       </AuthProvider>
     </ThemeProvider>

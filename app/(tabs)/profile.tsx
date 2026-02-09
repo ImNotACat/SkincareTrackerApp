@@ -13,6 +13,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { useAuth } from '../../src/contexts/AuthContext';
 import { useRoutine } from '../../src/hooks/useRoutine';
 import { useProducts } from '../../src/hooks/useProducts';
+import { useToast } from '../../src/components/Toast';
 
 const createStyles = (colors: typeof import('../../src/constants/theme').Colors) => StyleSheet.create({
   container: {
@@ -199,6 +200,7 @@ export default function ProfileScreen() {
   const { steps, getTodayProgress } = useRoutine();
   const { activeProducts, products: allProducts } = useProducts();
   const { theme, setTheme } = useTheme();
+  const { showToast } = useToast();
   const progress = getTodayProgress();
   const styles = createStyles(colors);
 
@@ -285,7 +287,7 @@ export default function ProfileScreen() {
           label="Reminders"
           value="Off"
           onPress={() =>
-            Alert.alert('Coming Soon', 'Reminders will be available in a future update.')
+            showToast('Coming Soon', { message: 'Reminders will be available in a future update.', variant: 'info' })
           }
           colors={colors}
           styles={styles}
@@ -296,10 +298,7 @@ export default function ProfileScreen() {
           label="Cloud Sync"
           value={isAuthenticated && user?.id !== 'guest' ? 'Connected' : 'Off'}
           onPress={() =>
-            Alert.alert(
-              'Cloud Sync',
-              'Configure your Supabase credentials in .env and sign in with Google to enable sync.',
-            )
+            showToast('Cloud Sync', { message: 'Configure Supabase credentials in .env and sign in with Google to enable sync.', variant: 'info', duration: 4000 })
           }
           colors={colors}
           styles={styles}
@@ -310,10 +309,7 @@ export default function ProfileScreen() {
           label="About"
           value="v1.0.0"
           onPress={() =>
-            Alert.alert(
-              'Glow',
-              'Your daily skincare companion.\n\nBuilt with React Native, Expo Router, and Supabase.',
-            )
+            showToast('Glow v1.0.0', { message: 'Your daily skincare companion. Built with React Native, Expo Router, and Supabase.', variant: 'info', duration: 4000 })
           }
           colors={colors}
           styles={styles}

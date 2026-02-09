@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { detectConflicts, detectConflictsForProduct } from '../lib/ingredient-conflicts';
 import { isProductActiveOnDate } from '../hooks/useProducts';
-import type { Product, ScheduleType } from '../types';
+import type { Product, CatalogProduct, ScheduleType } from '../types';
 import type { DetectedConflict } from '../lib/ingredient-conflicts';
 
 // ─── Storage Key ────────────────────────────────────────────────────────────
@@ -27,12 +27,16 @@ export interface ProductsContextValue {
   addProduct: (
     product: Omit<Product, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
   ) => Promise<Product>;
+  addProductFromCatalog: (
+    catalogProduct: CatalogProduct,
+  ) => Promise<Product>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   stopProduct: (id: string) => Promise<void>;
   restartProduct: (id: string) => Promise<void>;
   getProductById: (id: string) => Product | undefined;
   getProductsForDate: (dateStr: string) => Product[];
+  isProductInMyList: (catalogId: string) => boolean;
   allConflicts: DetectedConflict[];
   getConflictsForProduct: (productId: string) => DetectedConflict[];
   reload: () => Promise<void>;
@@ -153,15 +157,86 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
 
   // ── CRUD ──────────────────────────────────────────────────────────────
 
+  // ── Push to shared catalog (fire-and-forget for non-guest users) ─────────
+
+  const pushToCatalog = useCallback(
+    async (product: Omit<Product, 'id' | 'user_id' | 'created_at' | 'updated_at'>): Promise<string | null> => {
+      if (isGuest || !user) return null;
+      try {
+        // Check for existing match (name + brand)
+        let query = supabase
+          .from('product_catalog')
+          .select('id, times_added')
+          .ilike('name', product.name.trim());
+
+        if (product.brand) {
+          query = query.ilike('brand', product.brand.trim());
+        } else {
+          query = query.is('brand', null);
+        }
+
+        const { data: existing } = await query.limit(1);
+
+        if (existing && existing.length > 0) {
+          // Already in catalog — bump counter
+          const catalogEntry = existing[0];
+          await supabase
+            .from('product_catalog')
+            .update({
+              times_added: catalogEntry.times_added + 1,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', catalogEntry.id);
+          return catalogEntry.id;
+        }
+
+        // Insert new catalog entry
+        const { data, error } = await supabase
+          .from('product_catalog')
+          .insert({
+            name: product.name.trim(),
+            brand: product.brand?.trim() || null,
+            size: product.size?.trim() || null,
+            image_url: product.image_url || null,
+            source_url: product.source_url || null,
+            step_category: product.step_category,
+            active_ingredients: product.active_ingredients || null,
+            full_ingredients: product.full_ingredients || null,
+            created_by: user.id,
+            times_added: 1,
+          })
+          .select('id')
+          .single();
+
+        if (error) {
+          console.error('Failed to push to catalog:', error);
+          return null;
+        }
+        return data?.id || null;
+      } catch (err) {
+        console.error('Catalog push error:', err);
+        return null;
+      }
+    },
+    [user, isGuest],
+  );
+
   const addProduct = useCallback(
     async (
       product: Omit<Product, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
     ): Promise<Product> => {
       if (!isGuest && user) {
+        // Also push to the shared catalog
+        const catalogId = await pushToCatalog(product);
+
         // Supabase insert (id, created_at, updated_at default on the server)
         const { data, error } = await supabase
           .from('products')
-          .insert({ ...product, user_id: user.id })
+          .insert({
+            ...product,
+            user_id: user.id,
+            catalog_id: catalogId || undefined,
+          })
           .select()
           .single();
 
@@ -179,6 +254,69 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
         const now = new Date().toISOString();
         const newProduct: Product = {
           ...product,
+          id: generateId(),
+          user_id: 'local',
+          created_at: now,
+          updated_at: now,
+        };
+        const updated = [newProduct, ...products];
+        setProducts(updated);
+        await cacheProducts(updated);
+        return newProduct;
+      }
+    },
+    [products, user, isGuest, cacheProducts, pushToCatalog],
+  );
+
+  /** Add a product from the shared catalog to the user's personal list. */
+  const addProductFromCatalog = useCallback(
+    async (catalogProduct: CatalogProduct): Promise<Product> => {
+      const today = new Date().toISOString().split('T')[0];
+
+      const productData = {
+        name: catalogProduct.name,
+        brand: catalogProduct.brand || undefined,
+        size: catalogProduct.size || undefined,
+        image_url: catalogProduct.image_url || undefined,
+        source_url: catalogProduct.source_url || undefined,
+        step_category: catalogProduct.step_category,
+        active_ingredients: catalogProduct.active_ingredients || undefined,
+        full_ingredients: catalogProduct.full_ingredients || undefined,
+        time_of_day: 'both' as const,
+        times_per_week: 7,
+        started_at: today,
+        catalog_id: catalogProduct.id,
+      };
+
+      if (!isGuest && user) {
+        // Bump the catalog counter
+        await supabase
+          .from('product_catalog')
+          .update({
+            times_added: catalogProduct.times_added + 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', catalogProduct.id);
+
+        const { data, error } = await supabase
+          .from('products')
+          .insert({ ...productData, user_id: user.id })
+          .select()
+          .single();
+
+        if (error) {
+          console.error('Failed to add product from catalog:', error);
+          throw error;
+        }
+
+        const updated = [data as Product, ...products];
+        setProducts(updated);
+        await cacheProducts(updated);
+        return data as Product;
+      } else {
+        const now = new Date().toISOString();
+        const newProduct: Product = {
+          ...productData,
           id: generateId(),
           user_id: 'local',
           created_at: now,
@@ -262,6 +400,15 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     [products],
   );
 
+  // ── Catalog helpers ────────────────────────────────────────────────────
+
+  const isProductInMyList = useCallback(
+    (catalogId: string): boolean => {
+      return products.some((p) => p.catalog_id === catalogId);
+    },
+    [products],
+  );
+
   // ── Ingredient Conflicts ──────────────────────────────────────────────
 
   const allConflicts: DetectedConflict[] = useMemo(
@@ -287,12 +434,14 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       inactiveProducts,
       isLoading,
       addProduct,
+      addProductFromCatalog,
       updateProduct,
       deleteProduct,
       stopProduct,
       restartProduct,
       getProductById,
       getProductsForDate,
+      isProductInMyList,
       allConflicts,
       getConflictsForProduct,
       reload: loadData,
@@ -303,12 +452,14 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       inactiveProducts,
       isLoading,
       addProduct,
+      addProductFromCatalog,
       updateProduct,
       deleteProduct,
       stopProduct,
       restartProduct,
       getProductById,
       getProductsForDate,
+      isProductInMyList,
       allConflicts,
       getConflictsForProduct,
       loadData,

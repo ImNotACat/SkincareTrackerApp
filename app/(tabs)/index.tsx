@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   RefreshControl,
   Alert,
+  Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -193,7 +194,7 @@ export default function TodayScreen() {
           <View style={styles.actionCardsRow}>
             <TouchableOpacity
               style={styles.actionCard}
-              onPress={() => router.push('/(tabs)/products')}
+              onPress={() => router.push({ pathname: '/(tabs)/products', params: { tab: 'explore' } })}
               activeOpacity={0.7}
             >
               <View style={[styles.actionCardIcon, { backgroundColor: colors.accent + '20' }]}>
@@ -254,6 +255,69 @@ function RoutineSection({
   const hasUnactioned = actioned < total && total > 0;
 
   const iconColor = timeOfDay === 'morning' ? '#D4B85A' : '#8B7BAF';
+
+  // Celebration animation
+  const celebrationScale = useRef(new Animated.Value(0)).current;
+  const celebrationOpacity = useRef(new Animated.Value(0)).current;
+  const wasAllDone = useRef(false);
+  const particleAnims = useRef(
+    Array.from({ length: 8 }, () => ({
+      translateX: new Animated.Value(0),
+      translateY: new Animated.Value(0),
+      opacity: new Animated.Value(0),
+    }))
+  ).current;
+
+  useEffect(() => {
+    if (allDone && !wasAllDone.current) {
+      // Trigger celebration animation
+      celebrationScale.setValue(0);
+      celebrationOpacity.setValue(1);
+
+      Animated.sequence([
+        Animated.spring(celebrationScale, {
+          toValue: 1,
+          friction: 4,
+          tension: 60,
+          useNativeDriver: true,
+        }),
+        Animated.timing(celebrationOpacity, {
+          toValue: 0,
+          duration: 1200,
+          delay: 800,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      // Particle burst
+      particleAnims.forEach((p, i) => {
+        const angle = (i / 8) * Math.PI * 2;
+        const dist = 50 + Math.random() * 30;
+        p.translateX.setValue(0);
+        p.translateY.setValue(0);
+        p.opacity.setValue(1);
+        Animated.parallel([
+          Animated.timing(p.translateX, {
+            toValue: Math.cos(angle) * dist,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(p.translateY, {
+            toValue: Math.sin(angle) * dist,
+            duration: 600,
+            useNativeDriver: true,
+          }),
+          Animated.timing(p.opacity, {
+            toValue: 0,
+            duration: 600,
+            delay: 200,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      });
+    }
+    wasAllDone.current = allDone;
+  }, [allDone]);
 
   function getSubtitle(): string {
     if (allDone) {
@@ -328,10 +392,42 @@ function RoutineSection({
             </>
           )}
 
-          {/* Completion summary */}
+          {/* Completion summary with celebration */}
           {allDone && (
             <>
               <View style={styles.primaryDivider} />
+              <View style={styles.celebrationWrapper}>
+                {/* Particle burst */}
+                {particleAnims.map((p, i) => (
+                  <Animated.View
+                    key={i}
+                    style={[
+                      styles.particle,
+                      {
+                        backgroundColor: i % 2 === 0 ? colors.primary : colors.accent,
+                        opacity: p.opacity,
+                        transform: [
+                          { translateX: p.translateX },
+                          { translateY: p.translateY },
+                        ],
+                      },
+                    ]}
+                  />
+                ))}
+                {/* Checkmark bounce */}
+                <Animated.View
+                  style={[
+                    styles.celebrationCheck,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: celebrationOpacity,
+                      transform: [{ scale: celebrationScale }],
+                    },
+                  ]}
+                >
+                  <Ionicons name="checkmark-done" size={28} color={colors.textOnPrimary} />
+                </Animated.View>
+              </View>
               <View style={styles.summaryRow}>
                 <View style={styles.summaryItem}>
                   <View style={[styles.summaryDot, { backgroundColor: colors.primary }]} />
@@ -629,6 +725,25 @@ const createStyles = (colors: any) => StyleSheet.create({
   },
 
   // Completion summary
+  celebrationWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 80,
+    position: 'relative',
+  },
+  celebrationCheck: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  particle: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',

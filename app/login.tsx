@@ -11,9 +11,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useAuth } from '../src/contexts/AuthContext';
+import { useToast } from '../src/components/Toast';
 
 export default function LoginScreen() {
   const { colors } = useTheme();
+  const { showToast } = useToast();
   const styles = createStyles(colors);
   const { signInWithGoogle, continueAsGuest } = useAuth();
   const [signingIn, setSigningIn] = useState(false);
@@ -24,10 +26,7 @@ export default function LoginScreen() {
       await signInWithGoogle();
     } catch (error: any) {
       console.error('Sign in error:', error);
-      Alert.alert(
-        'Sign In Failed',
-        'Unable to sign in with Google. Please try again.',
-      );
+      showToast('Sign In Failed', { message: 'Unable to sign in with Google. Please try again.', variant: 'error' });
     } finally {
       setSigningIn(false);
     }

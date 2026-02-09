@@ -76,17 +76,37 @@ export interface UserProfile {
   created_at: string;
 }
 
-// ─── Product Types ──────────────────────────────────────────────────────────
+// ─── Product Catalog Types (shared across users) ────────────────────────────
+
+export interface CatalogProduct {
+  id: string;
+  created_by?: string; // user who first added it
+  name: string;
+  brand?: string;
+  size?: string;
+  image_url?: string;
+  source_url?: string;
+  step_category: StepCategory;
+  active_ingredients?: string;
+  full_ingredients?: string;
+  times_added: number; // popularity counter
+  created_at: string;
+  updated_at: string;
+}
+
+// ─── Product Types (user-specific) ──────────────────────────────────────────
 
 export type TimeOfDayUsage = 'morning' | 'evening' | 'both';
 
 export interface Product {
   id: string;
   user_id: string;
+  catalog_id?: string; // link to shared product_catalog entry
 
   // Core info
   name: string;
   brand?: string;
+  size?: string; // e.g., "100ml", "50g", "1.7 oz"
   image_url?: string;
   source_url?: string; // URL product was imported from
 
@@ -126,9 +146,12 @@ export interface Product {
 export interface ImportedProductData {
   name?: string;
   brand?: string;
+  size?: string;
   image_url?: string;
   description?: string;
   ingredients?: string;
+  active_ingredients?: string[];
+  step_category?: StepCategory;
   source_url: string;
 }
 
@@ -142,6 +165,16 @@ export interface JournalEntry {
   type: JournalEntryType;
   text?: string; // comment text or caption
   image_uri?: string; // local URI for now, Supabase storage URL later
+  created_at: string;
+}
+
+// ─── Product Comment Types ──────────────────────────────────────────────
+
+export interface ProductComment {
+  id: string;
+  user_id: string;
+  product_id: string;
+  text: string;
   created_at: string;
 }
 

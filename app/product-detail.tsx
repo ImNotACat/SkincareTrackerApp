@@ -15,6 +15,7 @@ import { useTheme } from '../src/contexts/ThemeContext';
 import { useProducts } from '../src/hooks/useProducts';
 import { CATEGORY_INFO, TIME_OF_DAY_USAGE_OPTIONS, DAYS_OF_WEEK } from '../src/constants/skincare';
 import { ConflictWarnings } from '../src/components/ConflictWarnings';
+import { ProductComments } from '../src/components/ProductComments';
 import { formatDateShort } from '../src/lib/dateUtils';
 
 export default function ProductDetailScreen() {
@@ -99,7 +100,8 @@ export default function ProductDetailScreen() {
 
       {/* Name & Brand */}
       <Text style={styles.productName}>{product.name}</Text>
-      {product.brand && <Text style={styles.productBrand}>{product.brand}</Text>}
+      {product.brand && <Text style={styles.productBrand}>{product.brand}{product.size ? ` · ${product.size}` : ''}</Text>}
+      {!product.brand && product.size && <Text style={styles.productBrand}>{product.size}</Text>}
 
       {/* Status badge */}
       <View style={styles.statusRow}>
@@ -170,6 +172,12 @@ export default function ProductDetailScreen() {
           </View>
         </>
       )}
+
+      {/* Comments */}
+      <Text style={styles.sectionTitle}>Comments</Text>
+      <View style={styles.card}>
+        <ProductComments productId={product.id} />
+      </View>
 
       {/* Source URL */}
       {product.source_url && (

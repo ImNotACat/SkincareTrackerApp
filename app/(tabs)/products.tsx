@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,18 +10,19 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useProducts } from '../../src/hooks/useProducts';
 import { useWishlist } from '../../src/hooks/useWishlist';
-import { searchProducts } from '../../src/lib/openbeautyfacts';
+import { useProductCatalog } from '../../src/hooks/useProductCatalog';
+import { useToast } from '../../src/components/Toast';
+import { CATEGORIES, CATEGORY_INFO } from '../../src/constants/skincare';
 import { ProductCard } from '../../src/components/ProductCard';
 import { SectionHeader } from '../../src/components/SectionHeader';
 import { EmptyState } from '../../src/components/EmptyState';
-import type { Product } from '../../src/types';
-import type { OpenBeautyFactsProduct } from '../../src/lib/openbeautyfacts';
+import type { Product, CatalogProduct, StepCategory } from '../../src/types';
 
 type TopTab = 'my-products' | 'explore';
 type ProductFilter = 'active' | 'stopped' | 'all' | 'wishlist';
@@ -192,49 +193,125 @@ function MyProductsSection() {
   );
 }
 
-// ─── Explore Section ─────────────────────────────────────────────────────────
+// ─── Explore Section (shared product catalog) ──────────────────────────────
 
 function ExploreSection() {
   const { colors } = useTheme();
-  const { wishlist, addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
+  const router = useRouter();
+  const { addProductFromCatalog, isProductInMyList } = useProducts();
+  const { showToast } = useToast();
+  const {
+    results,
+    isSearching,
+    hasSearched,
+    featured,
+    isFeaturedLoading,
+    search,
+    loadFeatured,
+    browseByCategory,
+  } = useProductCatalog();
   const [searchQuery, setSearchQuery] = useState('');
-  const [products, setProducts] = useState<OpenBeautyFactsProduct[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<StepCategory | null>(null);
+  const [addingId, setAddingId] = useState<string | null>(null);
   const styles = createStyles(colors);
+
+  // Load featured products on mount
+  useEffect(() => {
+    loadFeatured();
+  }, [loadFeatured]);
 
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
+    setSelectedCategory(null);
+    await search(searchQuery.trim());
+  }, [searchQuery, search]);
 
-    setIsSearching(true);
-    setHasSearched(true);
+  const handleCategoryPress = useCallback(async (cat: StepCategory) => {
+    if (selectedCategory === cat) {
+      // Deselect - go back to featured
+      setSelectedCategory(null);
+      return;
+    }
+    setSelectedCategory(cat);
+    setSearchQuery('');
+    await browseByCategory(cat);
+  }, [selectedCategory, browseByCategory]);
+
+  const handleAddToMyProducts = useCallback(async (product: CatalogProduct) => {
+    if (isProductInMyList(product.id)) {
+      showToast('Already Added', { message: `"${product.name}" is already in your products list.`, variant: 'info' });
+      return;
+    }
+    setAddingId(product.id);
     try {
-      const result = await searchProducts(searchQuery.trim());
-      setProducts(result.products);
+      await addProductFromCatalog(product);
+      showToast('Product Added', { message: `"${product.name}" has been added to your products.`, variant: 'success' });
     } catch (error) {
-      console.error('Search failed:', error);
-      setProducts([]);
+      showToast('Error', { message: 'Failed to add product. Please try again.', variant: 'error' });
     } finally {
-      setIsSearching(false);
+      setAddingId(null);
     }
-  }, [searchQuery]);
+  }, [addProductFromCatalog, isProductInMyList, showToast]);
 
-  const handleToggleWishlist = async (product: OpenBeautyFactsProduct) => {
-    const productId = product.code;
-    if (isInWishlist(productId)) {
-      const item = wishlist.find((w) => w.product_id === productId);
-      if (item) {
-        await removeFromWishlist(item.id);
-      }
-    } else {
-      await addToWishlist({
-        product_id: productId,
-        product_name: product.product_name || 'Unknown Product',
-        brand: product.brands || undefined,
-        image_url: product.image_url || undefined,
-        source_url: product.url || undefined,
-      });
-    }
+  // Show search results or category results if searched, otherwise featured
+  const displayProducts = hasSearched || selectedCategory ? results : featured;
+  const showFeatured = !hasSearched && !selectedCategory;
+
+  const renderProductCard = (product: CatalogProduct) => {
+    const alreadyAdded = isProductInMyList(product.id);
+    const isAdding = addingId === product.id;
+    const catInfo = CATEGORY_INFO[product.step_category];
+
+    return (
+      <View key={product.id} style={styles.exploreCard}>
+        {product.image_url ? (
+          <Image source={{ uri: product.image_url }} style={styles.exploreImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.exploreImagePlaceholder}>
+            <Ionicons name={(catInfo?.icon || 'flask-outline') as any} size={28} color={colors.textLight} />
+          </View>
+        )}
+        <View style={styles.exploreInfo}>
+          <Text style={styles.exploreName} numberOfLines={2}>
+            {product.name}
+          </Text>
+          {product.brand && (
+            <Text style={styles.exploreBrand} numberOfLines={1}>
+              {product.brand}
+            </Text>
+          )}
+          <View style={styles.exploreMeta}>
+            <View style={[styles.exploreCategoryBadge, { backgroundColor: catInfo?.color + '20' }]}>
+              <Text style={[styles.exploreCategoryText, { color: catInfo?.color }]}>
+                {catInfo?.label || product.step_category}
+              </Text>
+            </View>
+            {product.times_added > 1 && (
+              <Text style={styles.explorePopularity}>
+                {product.times_added} users
+              </Text>
+            )}
+          </View>
+        </View>
+        <TouchableOpacity
+          style={[
+            styles.addButton,
+            alreadyAdded && styles.addButtonAdded,
+          ]}
+          onPress={() => handleAddToMyProducts(product)}
+          disabled={alreadyAdded || isAdding}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          {isAdding ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : alreadyAdded ? (
+            <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+          ) : (
+            <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+          )}
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
@@ -247,13 +324,19 @@ function ExploreSection() {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search products..."
+            placeholder="Search community products..."
             placeholderTextColor={colors.textLight}
             onSubmitEditing={handleSearch}
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity
+              onPress={() => {
+                setSearchQuery('');
+                setSelectedCategory(null);
+              }}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
               <Ionicons name="close-circle" size={20} color={colors.textLight} />
             </TouchableOpacity>
           )}
@@ -271,74 +354,73 @@ function ExploreSection() {
         </TouchableOpacity>
       </View>
 
+      {/* Category filter chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoryRow}
+        style={styles.categoryScroll}
+      >
+        {CATEGORIES.map((cat) => {
+          const info = CATEGORY_INFO[cat];
+          const isActive = selectedCategory === cat;
+          return (
+            <TouchableOpacity
+              key={cat}
+              style={[
+                styles.categoryChip,
+                isActive && { backgroundColor: info.color, borderColor: info.color },
+              ]}
+              onPress={() => handleCategoryPress(cat)}
+            >
+              <Ionicons
+                name={info.icon as any}
+                size={14}
+                color={isActive ? '#fff' : info.color}
+                style={{ marginRight: 4 }}
+              />
+              <Text
+                style={[
+                  styles.categoryChipText,
+                  isActive && { color: '#fff' },
+                ]}
+              >
+                {info.label}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
       {/* Results */}
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {!hasSearched ? (
-          <EmptyState
-            icon="search-outline"
-            title="Search for products"
-            message="Enter a product name, brand, or ingredient to discover new skincare products."
-          />
-        ) : isSearching && products.length === 0 ? (
+        {isSearching || isFeaturedLoading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Searching...</Text>
+            <Text style={styles.loadingText}>
+              {isSearching ? 'Searching...' : 'Loading...'}
+            </Text>
           </View>
-        ) : products.length === 0 ? (
-          <EmptyState
-            icon="sad-outline"
-            title="No products found"
-            message="Try a different search term or check your internet connection."
-          />
+        ) : displayProducts.length === 0 ? (
+          showFeatured ? (
+            <EmptyState
+              icon="people-outline"
+              title="No products yet"
+              message="Be the first to add products! Products added by any user will appear here for the community to discover."
+            />
+          ) : (
+            <EmptyState
+              icon="sad-outline"
+              title="No products found"
+              message="Try a different search term or browse by category."
+            />
+          )
         ) : (
           <>
             <Text style={styles.resultsHeader}>
-              {products.length} product{products.length !== 1 ? 's' : ''} found
+              {showFeatured ? 'Popular Products' : `${displayProducts.length} product${displayProducts.length !== 1 ? 's' : ''} found`}
             </Text>
-            {products.map((product) => {
-              const inWishlist = isInWishlist(product.code);
-              return (
-                <TouchableOpacity
-                  key={product.code}
-                  style={styles.exploreCard}
-                  activeOpacity={0.7}
-                >
-                  {product.image_url ? (
-                    <Image source={{ uri: product.image_url }} style={styles.exploreImage} resizeMode="cover" />
-                  ) : (
-                    <View style={styles.exploreImagePlaceholder}>
-                      <Ionicons name="flask-outline" size={32} color={colors.textLight} />
-                    </View>
-                  )}
-                  <View style={styles.exploreInfo}>
-                    <Text style={styles.exploreName} numberOfLines={2}>
-                      {product.product_name || 'Unknown Product'}
-                    </Text>
-                    {product.brands && (
-                      <Text style={styles.exploreBrand} numberOfLines={1}>
-                        {product.brands}
-                      </Text>
-                    )}
-                    {product.ingredients_text && (
-                      <Text style={styles.exploreIngredients} numberOfLines={2}>
-                        {product.ingredients_text.substring(0, 100)}...
-                      </Text>
-                    )}
-                  </View>
-                  <TouchableOpacity
-                    style={styles.heartButton}
-                    onPress={() => handleToggleWishlist(product)}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  >
-                    <Ionicons
-                      name={inWishlist ? 'heart' : 'heart-outline'}
-                      size={24}
-                      color={inWishlist ? colors.error : colors.textLight}
-                    />
-                  </TouchableOpacity>
-                </TouchableOpacity>
-              );
-            })}
+            {displayProducts.map(renderProductCard)}
           </>
         )}
         <View style={styles.bottomSpacer} />
@@ -352,8 +434,16 @@ function ExploreSection() {
 export default function ProductsScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const [topTab, setTopTab] = useState<TopTab>('my-products');
+  const { tab } = useLocalSearchParams<{ tab?: string }>();
+  const [topTab, setTopTab] = useState<TopTab>(tab === 'explore' ? 'explore' : 'my-products');
   const styles = createStyles(colors);
+
+  // Update tab when param changes (e.g., navigated from Today's Explore card)
+  React.useEffect(() => {
+    if (tab === 'explore') {
+      setTopTab('explore');
+    }
+  }, [tab]);
 
   return (
     <View style={styles.container}>
@@ -583,6 +673,32 @@ const createStyles = (colors: any) => StyleSheet.create({
     opacity: 0.5,
   },
 
+  // Category filter chips (Explore)
+  categoryScroll: {
+    flexGrow: 0,
+    marginBottom: 4,
+  },
+  categoryRow: {
+    paddingHorizontal: Spacing.md + 4,
+    gap: Spacing.xs,
+  },
+  categoryChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: Spacing.sm + 2,
+    borderRadius: BorderRadius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  categoryChipText: {
+    ...Typography.caption,
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.textSecondary,
+  },
+
   // Explore results
   loadingContainer: {
     alignItems: 'center',
@@ -638,14 +754,33 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginBottom: 4,
     color: colors.textSecondary,
   },
-  exploreIngredients: {
+  exploreMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginTop: 2,
+  },
+  exploreCategoryBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.pill,
+  },
+  exploreCategoryText: {
     ...Typography.caption,
-    fontSize: 11,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  explorePopularity: {
+    ...Typography.caption,
+    fontSize: 10,
     color: colors.textLight,
   },
-  heartButton: {
+  addButton: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.xs,
+  },
+  addButtonAdded: {
+    opacity: 0.7,
   },
 });

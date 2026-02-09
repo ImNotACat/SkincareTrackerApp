@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useJournal } from '../src/hooks/useJournal';
+import { useToast } from '../src/components/Toast';
 
 type EntryMode = 'comment' | 'photo';
 
@@ -25,6 +26,7 @@ export default function AddEntryScreen() {
   const router = useRouter();
   const { addEntry } = useJournal();
   const { colors } = useTheme();
+  const { showToast } = useToast();
   const styles = createStyles(colors);
 
   const [mode, setMode] = useState<EntryMode>('comment');
@@ -37,7 +39,7 @@ export default function AddEntryScreen() {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow access to your photo library.');
+      showToast('Permission Needed', { message: 'Please allow access to your photo library.', variant: 'warning' });
       return;
     }
 
@@ -55,7 +57,7 @@ export default function AddEntryScreen() {
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Please allow access to your camera.');
+      showToast('Permission Needed', { message: 'Please allow access to your camera.', variant: 'warning' });
       return;
     }
 
@@ -86,7 +88,7 @@ export default function AddEntryScreen() {
       });
       router.back();
     } catch {
-      Alert.alert('Error', 'Failed to save entry. Please try again.');
+      showToast('Error', { message: 'Failed to save entry. Please try again.', variant: 'error' });
     } finally {
       setIsSaving(false);
     }

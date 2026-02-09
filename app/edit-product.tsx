@@ -11,9 +11,11 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useProducts } from '../src/hooks/useProducts';
+import { useToast } from '../src/components/Toast';
 import {
   CATEGORIES,
   CATEGORY_INFO,
@@ -22,8 +24,8 @@ import {
   ALL_DAYS,
   SCHEDULE_TYPE_OPTIONS,
 } from '../src/constants/skincare';
-import { formatDateForDisplay } from '../src/lib/dateUtils';
 import { IngredientSelector } from '../src/components/IngredientSelector';
+import { DateInput } from '../src/components/DateInput';
 import type { StepCategory, TimeOfDayUsage, DayOfWeek, ScheduleType } from '../src/types';
 
 export default function EditProductScreen() {
@@ -32,10 +34,12 @@ export default function EditProductScreen() {
   const { products, updateProduct, deleteProduct } = useProducts();
   const product = products.find((p) => p.id === productId);
   const { colors } = useTheme();
+  const { showToast } = useToast();
   const styles = createStyles(colors);
 
   const [name, setName] = useState('');
   const [brand, setBrand] = useState('');
+  const [size, setSize] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [stepCategory, setStepCategory] = useState<StepCategory>('serum');
   const [timeOfDay, setTimeOfDay] = useState<TimeOfDayUsage>('morning');
@@ -57,6 +61,7 @@ export default function EditProductScreen() {
     if (product) {
       setName(product.name);
       setBrand(product.brand || '');
+      setSize(product.size || '');
       setImageUrl(product.image_url || '');
       setStepCategory(product.step_category);
       setTimeOfDay(product.time_of_day);
@@ -103,16 +108,61 @@ export default function EditProductScreen() {
   const parsedCycleLength = parseInt(cycleLength, 10) || 0;
   const todayStr = new Date().toISOString().split('T')[0];
 
+  const handlePickImage = () => {
+    Alert.alert('Change Photo', 'Choose a source', [
+      {
+        text: 'Camera',
+        onPress: async () => {
+          const permission = await ImagePicker.requestCameraPermissionsAsync();
+          if (!permission.granted) {
+            showToast('Permission Needed', { message: 'Camera access is required to take photos.', variant: 'warning' });
+            return;
+          }
+          const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled && result.assets[0]) {
+            setImageUrl(result.assets[0].uri);
+          }
+        },
+      },
+      {
+        text: 'Gallery',
+        onPress: async () => {
+          const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!permission.granted) {
+            showToast('Permission Needed', { message: 'Gallery access is required to pick photos.', variant: 'warning' });
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled && result.assets[0]) {
+            setImageUrl(result.assets[0].uri);
+          }
+        },
+      },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   const handleSave = async () => {
     if (!productId) return;
     if (!name.trim()) {
-      Alert.alert('Missing Name', 'Please enter a product name.');
+      showToast('Missing Name', { message: 'Please enter a product name.', variant: 'warning' });
       return;
     }
 
     await updateProduct(productId, {
       name: name.trim(),
       brand: brand.trim() || undefined,
+      size: size.trim() || undefined,
       image_url: imageUrl.trim() || undefined,
       step_category: stepCategory,
       time_of_day: timeOfDay,
@@ -189,12 +239,25 @@ export default function EditProductScreen() {
         </View>
       )}
 
-      {/* Image */}
+      {/* Product photo */}
+      <Text style={styles.label}>PRODUCT PHOTO</Text>
       {imageUrl ? (
         <View style={styles.imagePreview}>
           <Image source={{ uri: imageUrl }} style={styles.productImage} resizeMode="cover" />
+          <TouchableOpacity style={styles.imageRemoveBtn} onPress={() => setImageUrl('')}>
+            <Ionicons name="close" size={14} color={colors.textOnPrimary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.imageChangeBtn} onPress={handlePickImage}>
+            <Ionicons name="camera-outline" size={14} color={colors.textOnPrimary} />
+            <Text style={styles.imageChangeBtnText}>Change</Text>
+          </TouchableOpacity>
         </View>
-      ) : null}
+      ) : (
+        <TouchableOpacity style={styles.imagePlaceholder} onPress={handlePickImage} activeOpacity={0.7}>
+          <Ionicons name="camera-outline" size={32} color={colors.textLight} />
+          <Text style={styles.imagePlaceholderText}>Tap to add photo</Text>
+        </TouchableOpacity>
+      )}
 
       {/* ── Core Fields ──────────────────────────────────────── */}
 
@@ -204,15 +267,13 @@ export default function EditProductScreen() {
       <Text style={styles.label}>BRAND</Text>
       <TextInput style={styles.input} value={brand} onChangeText={setBrand} placeholderTextColor={colors.textLight} />
 
-      <Text style={styles.label}>PRODUCT IMAGE URL</Text>
+      <Text style={styles.label}>SIZE</Text>
       <TextInput
         style={styles.input}
-        value={imageUrl}
-        onChangeText={setImageUrl}
-        placeholder="https://..."
+        value={size}
+        onChangeText={setSize}
+        placeholder="e.g., 100ml, 50g, 1.7 oz"
         placeholderTextColor={colors.textLight}
-        autoCapitalize="none"
-        keyboardType="url"
       />
 
       {/* ── Routine Placement ────────────────────────────────── */}
@@ -393,93 +454,41 @@ export default function EditProductScreen() {
 
       <Text style={styles.sectionTitle}>Longevity & Dates</Text>
 
-      <Text style={styles.label}>PERIOD AFTER OPENING (MONTHS)</Text>
-      <TextInput style={styles.input} value={longevityMonths} onChangeText={setLongevityMonths} placeholder="e.g., 12" placeholderTextColor={colors.textLight} keyboardType="number-pad" />
+      <Text style={styles.label}>PERIOD AFTER OPENING</Text>
+      <View style={styles.longevityRow}>
+        {[3, 6, 9, 12, 18, 24, 36].map((months) => {
+          const selected = longevityMonths === String(months);
+          return (
+            <TouchableOpacity
+              key={months}
+              style={[styles.longevityChip, selected && styles.longevityChipSelected]}
+              onPress={() => setLongevityMonths(selected ? '' : String(months))}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.longevityChipText, selected && styles.longevityChipTextSelected]}>
+                {months}M
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
       <View style={styles.dateRow}>
         <View style={styles.dateField}>
           <Text style={styles.label}>DATE PURCHASED</Text>
-          <TextInput
-            style={styles.input}
-            value={datePurchased ? formatDateForDisplay(datePurchased) : ''}
-            onChangeText={(text) => {
-              const parsed = text.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-              if (parsed) {
-                const [, day, month, year] = parsed;
-                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                if (!isNaN(date.getTime())) {
-                  setDatePurchased(date.toISOString().split('T')[0]);
-                }
-              } else if (text === '') {
-                setDatePurchased('');
-              }
-            }}
-            placeholder="dd-mm-yyyy"
-            placeholderTextColor={colors.textLight}
-          />
+          <DateInput value={datePurchased} onChangeDate={setDatePurchased} />
         </View>
         <View style={styles.dateField}>
           <Text style={styles.label}>DATE OPENED</Text>
-          <TextInput
-            style={styles.input}
-            value={dateOpened ? formatDateForDisplay(dateOpened) : ''}
-            onChangeText={(text) => {
-              const parsed = text.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-              if (parsed) {
-                const [, day, month, year] = parsed;
-                const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-                if (!isNaN(date.getTime())) {
-                  setDateOpened(date.toISOString().split('T')[0]);
-                }
-              } else if (text === '') {
-                setDateOpened('');
-              }
-            }}
-            placeholder="dd-mm-yyyy"
-            placeholderTextColor={colors.textLight}
-          />
+          <DateInput value={dateOpened} onChangeDate={setDateOpened} />
         </View>
       </View>
 
       <Text style={styles.label}>ADDED TO ROUTINE</Text>
-      <TextInput
-        style={styles.input}
-        value={startedAt ? formatDateForDisplay(startedAt) : ''}
-        onChangeText={(text) => {
-          const parsed = text.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-          if (parsed) {
-            const [, day, month, year] = parsed;
-            const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-            if (!isNaN(date.getTime())) {
-              setStartedAt(date.toISOString().split('T')[0]);
-            }
-          } else if (text === '') {
-            setStartedAt('');
-          }
-        }}
-        placeholder="dd-mm-yyyy"
-        placeholderTextColor={colors.textLight}
-      />
+      <DateInput value={startedAt} onChangeDate={(date) => setStartedAt(date || startedAt)} />
 
       <Text style={styles.label}>STOPPED USING (BLANK = ACTIVE)</Text>
-      <TextInput
-        style={styles.input}
-        value={stoppedAt ? formatDateForDisplay(stoppedAt) : ''}
-        onChangeText={(text) => {
-          const parsed = text.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
-          if (parsed) {
-            const [, day, month, year] = parsed;
-            const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
-            if (!isNaN(date.getTime())) {
-              setStoppedAt(date.toISOString().split('T')[0]);
-            }
-          } else if (text === '') {
-            setStoppedAt('');
-          }
-        }}
-        placeholder="dd-mm-yyyy or leave empty"
-        placeholderTextColor={colors.textLight}
-      />
+      <DateInput value={stoppedAt} onChangeDate={setStoppedAt} placeholder="dd-mm-yyyy or leave empty" />
 
       {/* ── Notes ────────────────────────────────────────────── */}
 
@@ -529,9 +538,53 @@ const createStyles = (colors: any) => StyleSheet.create({
   expiryText: { ...Typography.bodySmall, fontSize: 13, color: colors.primaryDark, flex: 1 },
   expiryTextWarn: { color: colors.error },
 
-  // Image
+  // Image picker
+  imagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
+    height: 140,
+    gap: Spacing.xs,
+  },
+  imagePlaceholderText: {
+    ...Typography.caption,
+    color: colors.textLight,
+    fontSize: 13,
+  },
   imagePreview: { alignItems: 'center', marginBottom: Spacing.md },
   productImage: { width: 140, height: 140, borderRadius: BorderRadius.md, backgroundColor: colors.surfaceSecondary },
+  imageRemoveBtn: {
+    position: 'absolute',
+    top: 6,
+    right: '50%',
+    marginRight: -70 + 6,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.text + '80',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imageChangeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    paddingVertical: 4,
+    paddingHorizontal: Spacing.sm + 2,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: colors.primary,
+    gap: 4,
+  },
+  imageChangeBtnText: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: colors.textOnPrimary,
+    fontWeight: '600',
+  },
 
   // Sections
   sectionTitle: { ...Typography.subtitle, fontSize: 16, color: colors.text, marginTop: Spacing.xl, marginBottom: Spacing.xs },
@@ -579,6 +632,13 @@ const createStyles = (colors: any) => StyleSheet.create({
   intervalInput: { flex: 0, width: 80, textAlign: 'center' },
   intervalUnit: { ...Typography.body, fontWeight: '500', color: colors.textSecondary },
   scheduleHint: { ...Typography.caption, fontSize: 11, color: colors.textLight, marginTop: Spacing.sm, fontStyle: 'italic' },
+
+  // Longevity chips
+  longevityRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  longevityChip: { paddingVertical: Spacing.sm, paddingHorizontal: Spacing.md, borderRadius: BorderRadius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
+  longevityChipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+  longevityChipText: { ...Typography.button, fontSize: 13, color: colors.textSecondary },
+  longevityChipTextSelected: { color: colors.textOnPrimary },
 
   // Actions
   saveButton: { alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, borderRadius: BorderRadius.pill, paddingVertical: Spacing.md, marginTop: Spacing.xl },

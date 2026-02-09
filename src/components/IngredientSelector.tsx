@@ -5,7 +5,10 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  ScrollView,
+  Modal,
+  SectionList,
+  SafeAreaView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../constants/theme';
@@ -23,13 +26,11 @@ export function IngredientSelector({
 }: IngredientSelectorProps) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) {
-      return INGREDIENT_SECTIONS;
-    }
+    if (!searchQuery.trim()) return INGREDIENT_SECTIONS;
     const query = searchQuery.toLowerCase();
     const result: IngredientSection[] = [];
     for (const section of INGREDIENT_SECTIONS) {
@@ -43,8 +44,6 @@ export function IngredientSelector({
     return result;
   }, [searchQuery]);
 
-  const hasResults = filteredSections.some((s) => s.data.length > 0);
-
   const handleToggleIngredient = (ingredient: string) => {
     if (selectedIngredients.includes(ingredient)) {
       onSelectionChange(selectedIngredients.filter((i) => i !== ingredient));
@@ -57,8 +56,14 @@ export function IngredientSelector({
     onSelectionChange(selectedIngredients.filter((i) => i !== ingredient));
   };
 
+  const handleOpenModal = () => {
+    setSearchQuery('');
+    setIsModalOpen(true);
+  };
+
   return (
     <View style={styles.container}>
+      {/* Selected tags */}
       {selectedIngredients.length > 0 && (
         <View style={styles.tagsContainer}>
           {selectedIngredients.map((ingredient) => (
@@ -75,98 +80,114 @@ export function IngredientSelector({
         </View>
       )}
 
+      {/* Open picker button */}
       <TouchableOpacity
         style={styles.inputContainer}
-        onPress={() => setIsDropdownOpen(true)}
+        onPress={handleOpenModal}
         activeOpacity={0.7}
       >
         <Ionicons name="search-outline" size={18} color={colors.textLight} style={styles.searchIcon} />
-        <TextInput
-          style={styles.input}
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholder="Search active ingredients..."
-          placeholderTextColor={colors.textLight}
-          onFocus={() => setIsDropdownOpen(true)}
-          onBlur={() => {
-            setTimeout(() => setIsDropdownOpen(false), 200);
-          }}
-        />
-        <Ionicons
-          name={isDropdownOpen ? 'chevron-up' : 'chevron-down'}
-          size={18}
-          color={colors.textLight}
-        />
+        <Text style={styles.inputPlaceholder}>
+          {selectedIngredients.length > 0
+            ? `${selectedIngredients.length} selected — tap to edit`
+            : 'Search active ingredients...'}
+        </Text>
+        <Ionicons name="chevron-down" size={18} color={colors.textLight} />
       </TouchableOpacity>
 
-      {isDropdownOpen && (
-        <View style={styles.dropdown}>
-          {hasResults ? (
-            <ScrollView
-              style={styles.dropdownList}
-              nestedScrollEnabled={true}
-              keyboardShouldPersistTaps="handled"
+      {/* Full-screen modal picker */}
+      <Modal
+        visible={isModalOpen}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setIsModalOpen(false)}
+      >
+        <SafeAreaView style={styles.modalContainer}>
+          {/* Modal header */}
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Active Ingredients</Text>
+            <TouchableOpacity
+              style={styles.modalDoneBtn}
+              onPress={() => setIsModalOpen(false)}
             >
-              {filteredSections.map((section) => (
-                <View key={section.title}>
-                  <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionHeaderText}>{section.title}</Text>
-                  </View>
-                  {section.data.map((item) => {
-                    const isSelected = selectedIngredients.includes(item);
-                    return (
-                      <TouchableOpacity
-                        key={item}
-                        style={styles.dropdownItem}
-                        onPress={() => handleToggleIngredient(item)}
-                        activeOpacity={0.7}
-                      >
-                        <View style={styles.dropdownItemLeft}>
-                          <View
-                            style={[
-                              styles.checkbox,
-                              isSelected && styles.checkboxSelected,
-                            ]}
-                          >
-                            {isSelected && (
-                              <Ionicons
-                                name="checkmark"
-                                size={14}
-                                color={colors.textOnPrimary}
-                              />
-                            )}
-                          </View>
-                          <Text
-                            style={[
-                              styles.dropdownItemText,
-                              isSelected && styles.dropdownItemTextSelected,
-                            ]}
-                          >
-                            {item}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-              ))}
-            </ScrollView>
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>No ingredients found</Text>
+              <Text style={styles.modalDoneText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Search bar */}
+          <View style={styles.modalSearchContainer}>
+            <Ionicons name="search-outline" size={18} color={colors.textLight} />
+            <TextInput
+              style={styles.modalSearchInput}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              placeholder="Search ingredients..."
+              placeholderTextColor={colors.textLight}
+              autoFocus={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color={colors.textLight} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Selected count */}
+          {selectedIngredients.length > 0 && (
+            <View style={styles.selectedBar}>
+              <Text style={styles.selectedBarText}>
+                {selectedIngredients.length} ingredient{selectedIngredients.length !== 1 ? 's' : ''} selected
+              </Text>
+              <TouchableOpacity onPress={() => onSelectionChange([])}>
+                <Text style={styles.clearAllText}>Clear all</Text>
+              </TouchableOpacity>
             </View>
           )}
-        </View>
-      )}
+
+          {/* Ingredient list */}
+          <SectionList
+            sections={filteredSections}
+            keyExtractor={(item) => item}
+            renderSectionHeader={({ section }) => (
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionHeaderText}>{section.title}</Text>
+              </View>
+            )}
+            renderItem={({ item }) => {
+              const isSelected = selectedIngredients.includes(item);
+              return (
+                <TouchableOpacity
+                  style={styles.listItem}
+                  onPress={() => handleToggleIngredient(item)}
+                  activeOpacity={0.6}
+                >
+                  <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
+                    {isSelected && (
+                      <Ionicons name="checkmark" size={14} color={colors.textOnPrimary} />
+                    )}
+                  </View>
+                  <Text style={[styles.listItemText, isSelected && styles.listItemTextSelected]}>
+                    {item}
+                  </Text>
+                </TouchableOpacity>
+              );
+            }}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyText}>No ingredients found</Text>
+              </View>
+            }
+            stickySectionHeadersEnabled
+            contentContainerStyle={styles.listContent}
+          />
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 }
 
 const createStyles = (colors: any) => StyleSheet.create({
-  container: {
-    position: 'relative',
-    zIndex: 1,
-  },
+  container: {},
   tagsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -201,60 +222,102 @@ const createStyles = (colors: any) => StyleSheet.create({
   searchIcon: {
     marginRight: Spacing.sm,
   },
-  input: {
+  inputPlaceholder: {
     ...Typography.body,
     flex: 1,
-    padding: 0,
+    color: colors.textLight,
+  },
+
+  // Modal
+  modalContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md + 4,
+    paddingVertical: Spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+  },
+  modalTitle: {
+    ...Typography.subtitle,
+    fontSize: 18,
     color: colors.text,
   },
-  dropdown: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    marginTop: Spacing.xs,
+  modalDoneBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: Spacing.sm,
+  },
+  modalDoneText: {
+    ...Typography.button,
+    fontSize: 16,
+    color: colors.primary,
+  },
+  modalSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: colors.surface,
     borderRadius: BorderRadius.md,
+    marginHorizontal: Spacing.md + 4,
+    marginVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Platform.OS === 'ios' ? Spacing.sm + 2 : Spacing.xs,
     borderWidth: 1,
     borderColor: colors.border,
-    maxHeight: 260,
-    elevation: 4,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    zIndex: 1000,
+    gap: Spacing.sm,
   },
-  dropdownList: {
-    maxHeight: 260,
+  modalSearchInput: {
+    ...Typography.body,
+    flex: 1,
+    color: colors.text,
+    padding: 0,
+  },
+  selectedBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.md + 4,
+    paddingVertical: Spacing.sm,
+    backgroundColor: colors.primary + '10',
+  },
+  selectedBarText: {
+    ...Typography.caption,
+    color: colors.primaryDark,
+    fontWeight: '500',
+  },
+  clearAllText: {
+    ...Typography.caption,
+    color: colors.primary,
+    fontWeight: '600',
   },
   sectionHeader: {
     backgroundColor: colors.surfaceSecondary,
     paddingVertical: Spacing.xs + 2,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.md + 4,
     borderBottomWidth: 1,
     borderBottomColor: colors.divider,
   },
   sectionHeaderText: {
     ...Typography.label,
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textSecondary,
   },
-  dropdownItem: {
-    paddingVertical: Spacing.sm + 2,
-    paddingHorizontal: Spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.divider,
-  },
-  dropdownItemLeft: {
+  listItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
+    paddingVertical: Spacing.sm + 4,
+    paddingHorizontal: Spacing.md + 4,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.divider,
+    gap: Spacing.sm + 2,
   },
   checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
+    width: 22,
+    height: 22,
+    borderRadius: 5,
     borderWidth: 2,
     borderColor: colors.border,
     alignItems: 'center',
@@ -264,21 +327,25 @@ const createStyles = (colors: any) => StyleSheet.create({
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  dropdownItemText: {
+  listItemText: {
     ...Typography.body,
-    fontSize: 14,
+    fontSize: 15,
     color: colors.text,
   },
-  dropdownItemTextSelected: {
+  listItemTextSelected: {
     color: colors.primaryDark,
     fontWeight: '500',
   },
+  listContent: {
+    paddingBottom: 40,
+  },
   emptyState: {
-    padding: Spacing.md,
+    padding: Spacing.xl,
     alignItems: 'center',
   },
   emptyText: {
     ...Typography.caption,
     color: colors.textLight,
+    fontSize: 14,
   },
 });

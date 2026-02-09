@@ -21,6 +21,7 @@ import {
   TIME_OF_DAY_OPTIONS,
   SCHEDULE_TYPE_OPTIONS,
 } from '../src/constants/skincare';
+import { useToast } from '../src/components/Toast';
 import type { StepCategory, DayOfWeek, TimeOfDay, ScheduleType } from '../src/types';
 
 export default function EditStepScreen() {
@@ -29,6 +30,7 @@ export default function EditStepScreen() {
   const { steps, updateStep } = useRoutine();
   const step = steps.find((s) => s.id === stepId);
   const { colors } = useTheme();
+  const { showToast } = useToast();
   const styles = createStyles(colors);
 
   const [name, setName] = useState('');
@@ -85,28 +87,28 @@ export default function EditStepScreen() {
 
   const validate = (): boolean => {
     if (!name.trim()) {
-      Alert.alert('Missing Name', 'Please enter a name for this step.');
+      showToast('Missing Name', { message: 'Please enter a name for this step.', variant: 'warning' });
       return false;
     }
     if (scheduleType === 'weekly' && days.length === 0) {
-      Alert.alert('No Days Selected', 'Please select at least one day.');
+      showToast('No Days Selected', { message: 'Please select at least one day.', variant: 'warning' });
       return false;
     }
     if (scheduleType === 'cycle') {
       const len = parseInt(cycleLength, 10);
       if (!len || len < 2) {
-        Alert.alert('Invalid Cycle', 'Cycle length must be at least 2 days.');
+        showToast('Invalid Cycle', { message: 'Cycle length must be at least 2 days.', variant: 'warning' });
         return false;
       }
       if (cycleDays.length === 0) {
-        Alert.alert('No Days Selected', 'Please select at least one day in the cycle.');
+        showToast('No Days Selected', { message: 'Please select at least one day in the cycle.', variant: 'warning' });
         return false;
       }
     }
     if (scheduleType === 'interval') {
       const interval = parseInt(intervalDays, 10);
       if (!interval || interval < 1) {
-        Alert.alert('Invalid Interval', 'Interval must be at least 1 day.');
+        showToast('Invalid Interval', { message: 'Interval must be at least 1 day.', variant: 'warning' });
         return false;
       }
     }
