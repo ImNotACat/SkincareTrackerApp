@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,11 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Modal,
-  FlatList,
   SafeAreaView,
   Image,
+  ActivityIndicator,
+  SectionList,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,6 +18,8 @@ import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useRoutine } from '../src/hooks/useRoutine';
 import { useProducts } from '../src/hooks/useProducts';
+import { useWishlist } from '../src/hooks/useWishlist';
+import { useUnifiedProductSearch, type UnifiedProduct } from '../src/hooks/useUnifiedProductSearch';
 import {
   CATEGORIES,
   CATEGORY_INFO,
@@ -28,23 +30,45 @@ import {
 } from '../src/constants/skincare';
 import { useToast } from '../src/components/Toast';
 import type { StepCategory, DayOfWeek, TimeOfDay, ScheduleType, Product } from '../src/types';
+import type { WishlistItem } from '../src/types';
+
+// ─── Picker item: my products + wishlist (display shape) or unified search result ───
+type PickerItemMine =
+  | { type: 'product'; product: Product }
+  | { type: 'wishlist'; item: WishlistItem };
+type PickerItem = PickerItemMine | { type: 'unified'; product: UnifiedProduct };
+
+function wishlistToDisplay(item: WishlistItem): { name: string; brand?: string; image_url?: string; category: StepCategory } {
+  return {
+    name: item.product_name,
+    brand: item.brand,
+    image_url: item.image_url,
+    category: 'other',
+  };
+}
 
 export default function AddStepScreen() {
   const router = useRouter();
   const { addStep, steps } = useRoutine();
-  const { products, activeProducts } = useProducts();
+  const { activeProducts, inactiveProducts, addProduct, addProductFromCatalog } = useProducts();
+  const { wishlist } = useWishlist();
+  const { results: unifiedResults, isSearching, hasSearched, search, clearResults } = useUnifiedProductSearch();
   const { colors } = useTheme();
   const { showToast } = useToast();
   const styles = createStyles(colors);
 
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [selectedWishlistItem, setSelectedWishlistItem] = useState<WishlistItem | null>(null);
+  const [selectedUnifiedProduct, setSelectedUnifiedProduct] = useState<UnifiedProduct | null>(null);
   const [name, setName] = useState('');
   const [productName, setProductName] = useState('');
   const [showProductPicker, setShowProductPicker] = useState(false);
   const [productSearch, setProductSearch] = useState('');
   const [category, setCategory] = useState<StepCategory>('cleanser');
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('morning');
+  const [timeOfDaySelection, setTimeOfDaySelection] = useState<('morning' | 'evening')[]>(['morning']);
   const [notes, setNotes] = useState('');
+  const [isAddingToProducts, setIsAddingToProducts] = useState(false);
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Schedule state
   const [scheduleType, setScheduleType] = useState<ScheduleType>('weekly');
@@ -54,6 +78,50 @@ export default function AddStepScreen() {
   const [intervalDays, setIntervalDays] = useState('3');
 
   const todayStr = new Date().toISOString().split('T')[0];
+
+  // My list: active + inactive + wishlist (for picker display)
+  const myProductsAndWishlist: PickerItemMine[] = [
+    ...activeProducts.map((p) => ({ type: 'product' as const, product: p })),
+    ...inactiveProducts.map((p) => ({ type: 'product' as const, product: p })),
+    ...wishlist.map((item) => ({ type: 'wishlist' as const, item })),
+  ];
+
+  const searchLower = productSearch.trim().toLowerCase();
+  const filteredMine: PickerItemMine[] = searchLower
+    ? myProductsAndWishlist.filter((entry) => {
+        if (entry.type === 'product') {
+          const p = entry.product;
+          return (
+            p.name.toLowerCase().includes(searchLower) ||
+            (p.brand && p.brand.toLowerCase().includes(searchLower))
+          );
+        }
+        const d = wishlistToDisplay(entry.item);
+        return (
+          d.name.toLowerCase().includes(searchLower) ||
+          (d.brand && d.brand.toLowerCase().includes(searchLower))
+        );
+      })
+    : myProductsAndWishlist;
+
+  // Debounced unified search when user types >= 2 chars
+  useEffect(() => {
+    const q = productSearch.trim();
+    if (searchDebounceRef.current) {
+      clearTimeout(searchDebounceRef.current);
+      searchDebounceRef.current = null;
+    }
+    if (q.length >= 2) {
+      searchDebounceRef.current = setTimeout(() => {
+        search(q);
+        searchDebounceRef.current = null;
+      }, 400);
+      return () => {
+        if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+      };
+    }
+    clearResults();
+  }, [productSearch, search, clearResults]);
 
   const toggleDay = (day: DayOfWeek) => {
     setDays((prev) =>
@@ -69,25 +137,99 @@ export default function AddStepScreen() {
 
   const handleSelectProduct = (product: Product) => {
     setSelectedProduct(product);
+    setSelectedWishlistItem(null);
+    setSelectedUnifiedProduct(null);
     setName(product.name);
     setProductName(product.name);
     setCategory(product.step_category);
     setShowProductPicker(false);
     setProductSearch('');
+    clearResults();
+  };
+
+  const handleSelectWishlistItem = (item: WishlistItem) => {
+    const d = wishlistToDisplay(item);
+    setSelectedProduct(null);
+    setSelectedWishlistItem(item);
+    setSelectedUnifiedProduct(null);
+    setName(d.name);
+    setProductName(d.name);
+    setCategory(d.category);
+    setShowProductPicker(false);
+    setProductSearch('');
+    clearResults();
+  };
+
+  const handleSelectUnifiedProduct = (product: UnifiedProduct) => {
+    setSelectedProduct(null);
+    setSelectedWishlistItem(null);
+    setSelectedUnifiedProduct(product);
+    setName(product.name);
+    setProductName(product.name);
+    setCategory(product.step_category || 'other');
+    setShowProductPicker(false);
+    setProductSearch('');
+    clearResults();
   };
 
   const handleClearProduct = () => {
     setSelectedProduct(null);
+    setSelectedWishlistItem(null);
+    setSelectedUnifiedProduct(null);
     setName('');
     setProductName('');
   };
 
-  const filteredProducts = productSearch.trim()
-    ? products.filter((p) =>
-        p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-        (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase()))
-      )
-    : products;
+  const handleAddUnifiedToMyProducts = useCallback(async () => {
+    const u = selectedUnifiedProduct;
+    if (!u) return;
+    setIsAddingToProducts(true);
+    try {
+      if (u._catalogProduct) {
+        const p = await addProductFromCatalog(u._catalogProduct);
+        showToast('Added to My Products', { message: `"${u.name}" is now in your products.`, variant: 'success' });
+        setSelectedUnifiedProduct(null);
+        setSelectedProduct(p);
+      } else {
+        const p = await addProduct(
+          {
+            name: u.name,
+            brand: u.brand,
+            size: u.size,
+            image_url: u.image_url,
+            source_url: u.source_url,
+            step_category: u.step_category || 'other',
+            started_at: todayStr,
+            active_ingredients: u.active_ingredients?.join(', '),
+            full_ingredients: u.ingredients,
+          },
+          u._catalogId,
+        );
+        showToast('Added to My Products', { message: `"${u.name}" is now in your products.`, variant: 'success' });
+        setSelectedUnifiedProduct(null);
+        setSelectedProduct(p);
+      }
+    } catch (err) {
+      showToast('Could not add product', { message: 'Please try again.', variant: 'error' });
+    } finally {
+      setIsAddingToProducts(false);
+    }
+  }, [selectedUnifiedProduct, addProduct, addProductFromCatalog, todayStr, showToast]);
+
+  // Selected display: one of product, wishlist, or unified
+  const selectedDisplay = selectedProduct
+    ? { name: selectedProduct.name, brand: selectedProduct.brand, image_url: selectedProduct.image_url, category: selectedProduct.step_category }
+    : selectedWishlistItem
+      ? wishlistToDisplay(selectedWishlistItem)
+      : selectedUnifiedProduct
+        ? {
+            name: selectedUnifiedProduct.name,
+            brand: selectedUnifiedProduct.brand,
+            image_url: selectedUnifiedProduct.image_url,
+            category: (selectedUnifiedProduct.step_category || 'other') as StepCategory,
+          }
+        : null;
+  const showAddToProductsOffer = !!selectedUnifiedProduct;
 
   const handleCycleLengthChange = (val: string) => {
     setCycleLength(val);
@@ -101,6 +243,10 @@ export default function AddStepScreen() {
   const validate = (): boolean => {
     if (!name.trim()) {
       showToast('Missing Name', { message: 'Please enter a name for this step.', variant: 'warning' });
+      return false;
+    }
+    if (timeOfDaySelection.length === 0) {
+      showToast('Time of day', { message: 'Select at least one: Morning or Evening.', variant: 'warning' });
       return false;
     }
     if (scheduleType === 'weekly' && days.length === 0) {
@@ -128,15 +274,23 @@ export default function AddStepScreen() {
     return true;
   };
 
+  const resolvedTimeOfDay: TimeOfDay =
+    timeOfDaySelection.length === 2 ? 'both' : timeOfDaySelection[0];
+  const orderForNewStep =
+    resolvedTimeOfDay === 'both'
+      ? steps.length
+      : steps.filter((s) => s.time_of_day === resolvedTimeOfDay || s.time_of_day === 'both').length;
+
   const handleSave = async () => {
     if (!validate()) return;
 
     await addStep({
       name: name.trim(),
-      product_name: productName.trim() || undefined,
+      product_id: selectedProduct?.id,
+      product_name: (selectedProduct?.name ?? productName.trim()) || undefined,
       category,
-      time_of_day: timeOfDay,
-      order: steps.filter((s) => s.time_of_day === timeOfDay).length,
+      time_of_day: resolvedTimeOfDay,
+      order: orderForNewStep,
       notes: notes.trim() || undefined,
       schedule_type: scheduleType,
       days: scheduleType === 'weekly' ? days : [],
@@ -156,18 +310,18 @@ export default function AddStepScreen() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       {/* Product picker */}
       <Text style={styles.label}>SELECT PRODUCT</Text>
-      {selectedProduct ? (
+      {selectedDisplay ? (
         <View style={styles.selectedProductCard}>
-          {selectedProduct.image_url ? (
-            <Image source={{ uri: selectedProduct.image_url }} style={styles.selectedProductImage} resizeMode="cover" />
+          {selectedDisplay.image_url ? (
+            <Image source={{ uri: selectedDisplay.image_url }} style={styles.selectedProductImage} resizeMode="cover" />
           ) : (
-            <View style={[styles.selectedProductImagePlaceholder, { backgroundColor: CATEGORY_INFO[selectedProduct.step_category].color + '18' }]}>
-              <Ionicons name={CATEGORY_INFO[selectedProduct.step_category].icon as any} size={20} color={CATEGORY_INFO[selectedProduct.step_category].color} />
+            <View style={[styles.selectedProductImagePlaceholder, { backgroundColor: CATEGORY_INFO[selectedDisplay.category].color + '18' }]}>
+              <Ionicons name={CATEGORY_INFO[selectedDisplay.category].icon as any} size={20} color={CATEGORY_INFO[selectedDisplay.category].color} />
             </View>
           )}
           <View style={styles.selectedProductInfo}>
-            <Text style={styles.selectedProductName} numberOfLines={1}>{selectedProduct.name}</Text>
-            {selectedProduct.brand && <Text style={styles.selectedProductBrand} numberOfLines={1}>{selectedProduct.brand}</Text>}
+            <Text style={styles.selectedProductName} numberOfLines={1}>{selectedDisplay.name}</Text>
+            {selectedDisplay.brand && <Text style={styles.selectedProductBrand} numberOfLines={1}>{selectedDisplay.brand}</Text>}
           </View>
           <TouchableOpacity onPress={handleClearProduct} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Ionicons name="close-circle" size={22} color={colors.textLight} />
@@ -185,6 +339,23 @@ export default function AddStepScreen() {
         </TouchableOpacity>
       )}
 
+      {showAddToProductsOffer && (
+        <TouchableOpacity
+          style={styles.addToProductsLink}
+          onPress={handleAddUnifiedToMyProducts}
+          disabled={isAddingToProducts}
+        >
+          {isAddingToProducts ? (
+            <ActivityIndicator size="small" color={colors.primary} />
+          ) : (
+            <>
+              <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+              <Text style={styles.addToProductsLinkText}>Also add to My Products</Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
       <TouchableOpacity
         style={styles.addNewProductLink}
         onPress={() => router.push('/add-product')}
@@ -199,7 +370,7 @@ export default function AddStepScreen() {
         style={styles.input}
         value={name}
         onChangeText={setName}
-        placeholder={selectedProduct ? selectedProduct.name : 'e.g., Vitamin C Serum'}
+        placeholder={selectedDisplay ? selectedDisplay.name : 'e.g., Vitamin C Serum'}
         placeholderTextColor={colors.textLight}
       />
 
@@ -223,69 +394,165 @@ export default function AddStepScreen() {
               style={styles.modalSearchInput}
               value={productSearch}
               onChangeText={setProductSearch}
-              placeholder="Search products..."
+              placeholder="Search your products or find new ones..."
               placeholderTextColor={colors.textLight}
             />
             {productSearch.length > 0 && (
-              <TouchableOpacity onPress={() => setProductSearch('')}>
+              <TouchableOpacity onPress={() => { setProductSearch(''); clearResults(); }}>
                 <Ionicons name="close-circle" size={18} color={colors.textLight} />
               </TouchableOpacity>
             )}
           </View>
-          <FlatList
-            data={filteredProducts}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => {
-              const catInfo = CATEGORY_INFO[item.step_category];
-              return (
-                <TouchableOpacity
-                  style={styles.productListItem}
-                  onPress={() => handleSelectProduct(item)}
-                  activeOpacity={0.6}
-                >
-                  {item.image_url ? (
-                    <Image source={{ uri: item.image_url }} style={styles.productListImage} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.productListImagePlaceholder, { backgroundColor: catInfo.color + '18' }]}>
-                      <Ionicons name={catInfo.icon as any} size={18} color={catInfo.color} />
-                    </View>
-                  )}
-                  <View style={styles.productListInfo}>
-                    <Text style={styles.productListName} numberOfLines={1}>{item.name}</Text>
-                    <Text style={styles.productListMeta} numberOfLines={1}>
-                      {item.brand ? `${item.brand} · ` : ''}{catInfo.label}
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
-                </TouchableOpacity>
-              );
-            }}
-            ListEmptyComponent={
-              <View style={styles.emptyProducts}>
-                <Text style={styles.emptyProductsText}>No products found</Text>
-                <TouchableOpacity
-                  style={styles.emptyAddBtn}
-                  onPress={() => { setShowProductPicker(false); router.push('/add-product'); }}
-                >
-                  <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
-                  <Text style={styles.emptyAddBtnText}>Add a product first</Text>
-                </TouchableOpacity>
-              </View>
+
+          {isSearching && (
+            <View style={styles.searchingRow}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.searchingText}>Searching...</Text>
+            </View>
+          )}
+
+          {(() => {
+            const sections: { title: string; data: PickerItem[] }[] = [
+              { title: 'Your products & wishlist', data: filteredMine },
+            ];
+            if (productSearch.trim().length >= 2) {
+              sections.push({
+                title: 'Search results',
+                data: unifiedResults.map((p) => ({ type: 'unified' as const, product: p })),
+              });
             }
-            contentContainerStyle={styles.productListContent}
-          />
+            const totalItems = sections.reduce((acc, s) => acc + s.data.length, 0);
+            return (
+              <SectionList
+                sections={sections}
+                keyExtractor={(item) => {
+                  if (item.type === 'product') return `product-${item.product.id}`;
+                  if (item.type === 'wishlist') return `wishlist-${item.item.id}`;
+                  return `unified-${item.product._catalogId ?? item.product._obfCode ?? item.product.name}`;
+                }}
+                renderSectionHeader={({ section }) =>
+                  section.data.length > 0 ? (
+                    <View style={styles.sectionHeader}>
+                      <Text style={styles.sectionHeaderText}>{section.title}</Text>
+                    </View>
+                  ) : null
+                }
+                renderItem={({ item }) => {
+                  if (item.type === 'product') {
+                    const p = item.product;
+                    const catInfo = CATEGORY_INFO[p.step_category];
+                    return (
+                      <TouchableOpacity
+                        style={styles.productListItem}
+                        onPress={() => handleSelectProduct(p)}
+                        activeOpacity={0.6}
+                      >
+                        {p.image_url ? (
+                          <Image source={{ uri: p.image_url }} style={styles.productListImage} resizeMode="cover" />
+                        ) : (
+                          <View style={[styles.productListImagePlaceholder, { backgroundColor: catInfo.color + '18' }]}>
+                            <Ionicons name={catInfo.icon as any} size={18} color={catInfo.color} />
+                          </View>
+                        )}
+                        <View style={styles.productListInfo}>
+                          <Text style={styles.productListName} numberOfLines={1}>{p.name}</Text>
+                          <Text style={styles.productListMeta} numberOfLines={1}>
+                            {p.brand ? `${p.brand} · ` : ''}{catInfo.label}
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+                      </TouchableOpacity>
+                    );
+                  }
+                  if (item.type === 'wishlist') {
+                    const d = wishlistToDisplay(item.item);
+                    const catInfo = CATEGORY_INFO[d.category];
+                    return (
+                      <TouchableOpacity
+                        style={styles.productListItem}
+                        onPress={() => handleSelectWishlistItem(item.item)}
+                        activeOpacity={0.6}
+                      >
+                        {d.image_url ? (
+                          <Image source={{ uri: d.image_url }} style={styles.productListImage} resizeMode="cover" />
+                        ) : (
+                          <View style={[styles.productListImagePlaceholder, { backgroundColor: catInfo.color + '18' }]}>
+                            <Ionicons name="heart-outline" size={18} color={catInfo.color} />
+                          </View>
+                        )}
+                        <View style={styles.productListInfo}>
+                          <Text style={styles.productListName} numberOfLines={1}>{d.name}</Text>
+                          <Text style={styles.productListMeta} numberOfLines={1}>
+                            {d.brand ? `${d.brand} · ` : ''}Wishlist
+                          </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+                      </TouchableOpacity>
+                    );
+                  }
+                  const u = item.product;
+                  const catInfo = u.step_category ? CATEGORY_INFO[u.step_category] : CATEGORY_INFO.other;
+                  return (
+                    <TouchableOpacity
+                      style={styles.productListItem}
+                      onPress={() => handleSelectUnifiedProduct(u)}
+                      activeOpacity={0.6}
+                    >
+                      {u.image_url ? (
+                        <Image source={{ uri: u.image_url }} style={styles.productListImage} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.productListImagePlaceholder, { backgroundColor: catInfo.color + '18' }]}>
+                          <Ionicons name={catInfo.icon as any} size={18} color={catInfo.color} />
+                        </View>
+                      )}
+                      <View style={styles.productListInfo}>
+                        <Text style={styles.productListName} numberOfLines={1}>{u.name}</Text>
+                        <Text style={styles.productListMeta} numberOfLines={1}>
+                          {u.brand ? `${u.brand} · ` : ''}{catInfo.label}
+                        </Text>
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textLight} />
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  totalItems === 0 ? (
+                    <View style={styles.emptyProducts}>
+                      <Text style={styles.emptyProductsText}>
+                        {productSearch.trim().length >= 2 ? 'No products found' : 'No products or wishlist items yet'}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.emptyAddBtn}
+                        onPress={() => { setShowProductPicker(false); router.push('/add-product'); }}
+                      >
+                        <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+                        <Text style={styles.emptyAddBtnText}>Add a product</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null
+                }
+                contentContainerStyle={styles.productListContent}
+                stickySectionHeadersEnabled={false}
+              />
+            );
+          })()}
         </SafeAreaView>
       </Modal>
 
-      <Text style={styles.label}>TIME OF DAY</Text>
+      <Text style={styles.label}>TIME OF DAY (select at least one)</Text>
       <View style={styles.pillRow}>
         {TIME_OF_DAY_OPTIONS.map((option) => {
-          const selected = timeOfDay === option.key;
+          const selected = timeOfDaySelection.includes(option.key);
           return (
             <TouchableOpacity
               key={option.key}
               style={[styles.pill, selected && styles.pillSelected]}
-              onPress={() => setTimeOfDay(option.key)}
+              onPress={() => {
+                if (selected && timeOfDaySelection.length <= 1) return;
+                setTimeOfDaySelection((prev) =>
+                  selected ? prev.filter((k) => k !== option.key) : [...prev, option.key].sort(),
+                );
+              }}
             >
               <Ionicons
                 name={option.icon as any}
@@ -623,6 +890,14 @@ const createStyles = (colors: any) => StyleSheet.create({
     alignSelf: 'flex-start',
   },
   addNewProductText: { ...Typography.caption, color: colors.primary, fontWeight: '600' },
+  addToProductsLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: Spacing.sm,
+    gap: 4,
+    alignSelf: 'flex-start',
+  },
+  addToProductsLinkText: { ...Typography.caption, color: colors.primary, fontWeight: '600' },
 
   // Product picker modal
   modalContainer: { flex: 1, backgroundColor: colors.background },
@@ -651,6 +926,26 @@ const createStyles = (colors: any) => StyleSheet.create({
     gap: Spacing.sm,
   },
   modalSearchInput: { ...Typography.body, flex: 1, color: colors.text, padding: 0 },
+  searchingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md + 4,
+    paddingVertical: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  searchingText: { ...Typography.bodySmall, color: colors.textSecondary },
+  sectionHeader: {
+    paddingHorizontal: Spacing.md + 4,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.xs,
+    backgroundColor: colors.background,
+  },
+  sectionHeaderText: {
+    ...Typography.label,
+    fontSize: 12,
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+  },
   productListItem: {
     flexDirection: 'row',
     alignItems: 'center',

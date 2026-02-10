@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,13 +7,13 @@ import {
   Image,
   StyleSheet,
   RefreshControl,
-  Alert,
   Dimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
 import { useTheme } from '../../src/contexts/ThemeContext';
+import { useConfirm } from '../../src/contexts/ConfirmContext';
 import { useJournal } from '../../src/hooks/useJournal';
 import { EmptyState } from '../../src/components/EmptyState';
 import { formatDateShort } from '../../src/lib/dateUtils';
@@ -52,20 +52,28 @@ function formatTime(isoStr: string): string {
 
 export default function JournalScreen() {
   const { colors } = useTheme();
+  const { showConfirm } = useConfirm();
   const styles = createStyles(colors);
   const router = useRouter();
   const { groupedByDate, isLoading, deleteEntry, reload } = useJournal();
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
+  // Reload when screen gains focus (e.g. after adding an entry)
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload]),
+  );
+
   const handleDelete = (entry: JournalEntry) => {
-    Alert.alert('Delete Entry', 'Are you sure you want to delete this entry?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteEntry(entry.id),
-      },
-    ]);
+    showConfirm({
+      title: 'Delete Entry',
+      message: 'Are you sure you want to delete this entry?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteEntry(entry.id) },
+      ],
+    });
   };
 
   const hasEntries = groupedByDate.length > 0;
@@ -182,6 +190,17 @@ function EntryCard({
       {!!entry.text && (
         <Text style={styles.entryText}>{entry.text}</Text>
       )}
+
+      {/* Tags (stored separately) */}
+      {entry.tags && entry.tags.length > 0 && (
+        <View style={styles.entryTagsRow}>
+          {entry.tags.map((tag) => (
+            <View key={tag} style={styles.entryTagPill}>
+              <Text style={styles.entryTagText}>{tag}</Text>
+            </View>
+          ))}
+        </View>
+      )}
     </View>
   );
 }
@@ -284,6 +303,24 @@ const createStyles = (colors: any) => StyleSheet.create({
     color: colors.text,
     fontSize: 14,
     lineHeight: 21,
+  },
+  entryTagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.xs,
+    marginTop: Spacing.sm,
+  },
+  entryTagPill: {
+    paddingVertical: 2,
+    paddingHorizontal: Spacing.sm,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  entryTagText: {
+    ...Typography.caption,
+    fontSize: 11,
+    color: colors.textSecondary,
+    fontWeight: '500',
   },
 
   // FAB

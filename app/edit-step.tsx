@@ -36,7 +36,7 @@ export default function EditStepScreen() {
   const [name, setName] = useState('');
   const [productName, setProductName] = useState('');
   const [category, setCategory] = useState<StepCategory>('cleanser');
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>('morning');
+  const [timeOfDaySelection, setTimeOfDaySelection] = useState<('morning' | 'evening')[]>(['morning']);
   const [notes, setNotes] = useState('');
 
   // Schedule state
@@ -53,7 +53,7 @@ export default function EditStepScreen() {
       setName(step.name);
       setProductName(step.product_name || '');
       setCategory(step.category);
-      setTimeOfDay(step.time_of_day);
+      setTimeOfDaySelection(step.time_of_day === 'both' ? ['morning', 'evening'] : [step.time_of_day]);
       setNotes(step.notes || '');
       setScheduleType(step.schedule_type || 'weekly');
       setDays(step.days || []);
@@ -90,6 +90,10 @@ export default function EditStepScreen() {
       showToast('Missing Name', { message: 'Please enter a name for this step.', variant: 'warning' });
       return false;
     }
+    if (timeOfDaySelection.length === 0) {
+      showToast('Time of day', { message: 'Select at least one: Morning or Evening.', variant: 'warning' });
+      return false;
+    }
     if (scheduleType === 'weekly' && days.length === 0) {
       showToast('No Days Selected', { message: 'Please select at least one day.', variant: 'warning' });
       return false;
@@ -115,14 +119,18 @@ export default function EditStepScreen() {
     return true;
   };
 
+  const resolvedTimeOfDay: TimeOfDay =
+    timeOfDaySelection.length === 2 ? 'both' : timeOfDaySelection[0];
+
   const handleSave = async () => {
     if (!stepId || !validate()) return;
 
     await updateStep(stepId, {
       name: name.trim(),
+      product_id: step?.product_id,
       product_name: productName.trim() || undefined,
       category,
-      time_of_day: timeOfDay,
+      time_of_day: resolvedTimeOfDay,
       notes: notes.trim() || undefined,
       schedule_type: scheduleType,
       days: scheduleType === 'weekly' ? days : [],
@@ -166,15 +174,20 @@ export default function EditStepScreen() {
         placeholderTextColor={colors.textLight}
       />
 
-      <Text style={styles.label}>TIME OF DAY</Text>
+      <Text style={styles.label}>TIME OF DAY (select at least one)</Text>
       <View style={styles.pillRow}>
         {TIME_OF_DAY_OPTIONS.map((option) => {
-          const selected = timeOfDay === option.key;
+          const selected = timeOfDaySelection.includes(option.key);
           return (
             <TouchableOpacity
               key={option.key}
               style={[styles.pill, selected && styles.pillSelected]}
-              onPress={() => setTimeOfDay(option.key)}
+              onPress={() => {
+                if (selected && timeOfDaySelection.length <= 1) return;
+                setTimeOfDaySelection((prev) =>
+                  selected ? prev.filter((k) => k !== option.key) : [...prev, option.key].sort(),
+                );
+              }}
             >
               <Ionicons
                 name={option.icon as any}

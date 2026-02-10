@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -6,43 +6,47 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Image,
   ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
-import { useTheme } from '../src/contexts/ThemeContext';
-import { useProducts } from '../src/hooks/useProducts';
-import { useToast } from '../src/components/Toast';
-import { importProductFromUrl } from '../src/lib/product-import';
-import {
-  CATEGORIES,
-  CATEGORY_INFO,
-  TIME_OF_DAY_USAGE_OPTIONS,
-  DAYS_OF_WEEK,
-  ALL_DAYS,
-  SCHEDULE_TYPE_OPTIONS,
-} from '../src/constants/skincare';
-import { getTodayString } from '../src/lib/dateUtils';
-import { IngredientSelector } from '../src/components/IngredientSelector';
-import { DateInput } from '../src/components/DateInput';
-import type { StepCategory, TimeOfDayUsage, DayOfWeek, ScheduleType } from '../src/types';
+import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
+import { useTheme } from '../../src/contexts/ThemeContext';
+import { useProducts } from '../../src/hooks/useProducts';
+import { useToast } from '../../src/components/Toast';
+import { useConfirm } from '../../src/contexts/ConfirmContext';
+import { importProductFromUrl } from '../../src/lib/product-import';
+import { useUnifiedProductSearch, type UnifiedProduct } from '../../src/hooks/useUnifiedProductSearch';
+import { CATEGORIES, CATEGORY_INFO } from '../../src/constants/skincare';
+import { getTodayString } from '../../src/lib/dateUtils';
+import { IngredientSelector } from '../../src/components/IngredientSelector';
+import { DateInput } from '../../src/components/DateInput';
+import type { StepCategory } from '../../src/types';
 
-type AddMode = 'manual' | 'import';
+type AddMode = 'manual' | 'import' | 'search';
 
 export default function AddProductScreen() {
   const router = useRouter();
-  const { addProduct } = useProducts();
+  const { addProduct, products } = useProducts();
   const { colors } = useTheme();
   const { showToast } = useToast();
+  const { showConfirm } = useConfirm();
   const styles = createStyles(colors);
 
   const [mode, setMode] = useState<AddMode>('manual');
   const [importUrl, setImportUrl] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+
+  // Search state
+  const { results: searchResults, isSearching, hasSearched, search, clearResults } =
+    useUnifiedProductSearch();
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track catalog linkage when a product was selected from search
+  const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>(undefined);
 
   // Product fields
   const [name, setName] = useState('');
@@ -51,12 +55,6 @@ export default function AddProductScreen() {
   const [imageUrl, setImageUrl] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
   const [stepCategory, setStepCategory] = useState<StepCategory>('serum');
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDayUsage>('morning');
-  const [scheduleType, setScheduleType] = useState<ScheduleType>('weekly');
-  const [scheduleDays, setScheduleDays] = useState<DayOfWeek[]>([...ALL_DAYS]);
-  const [cycleLength, setCycleLength] = useState('4');
-  const [cycleDays, setCycleDays] = useState<number[]>([1]);
-  const [intervalDays, setIntervalDays] = useState('3');
   const [activeIngredients, setActiveIngredients] = useState<string[]>([]);
   const [fullIngredients, setFullIngredients] = useState('');
   const [longevityMonths, setLongevityMonths] = useState('');
@@ -67,70 +65,52 @@ export default function AddProductScreen() {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const toggleDay = (day: DayOfWeek) => {
-    setScheduleDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
-    );
-  };
-
-  const toggleCycleDay = (day: number) => {
-    setCycleDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b),
-    );
-  };
-
-  const handleCycleLengthChange = (val: string) => {
-    setCycleLength(val);
-    const num = parseInt(val, 10);
-    if (num > 0) {
-      setCycleDays((prev) => prev.filter((d) => d <= num));
-    }
-  };
-
-  const parsedCycleLength = parseInt(cycleLength, 10) || 0;
-
   const handlePickImage = () => {
-    Alert.alert('Add Photo', 'Choose a source', [
-      {
-        text: 'Camera',
-        onPress: async () => {
-          const permission = await ImagePicker.requestCameraPermissionsAsync();
-          if (!permission.granted) {
-            showToast('Permission Needed', { message: 'Camera access is required to take photos.', variant: 'warning' });
-            return;
-          }
-          const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          });
-          if (!result.canceled && result.assets[0]) {
-            setImageUrl(result.assets[0].uri);
-          }
+    showConfirm({
+      title: 'Add Photo',
+      message: 'Choose a source',
+      buttons: [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permission.granted) {
+              showToast('Permission Needed', { message: 'Camera access is required to take photos.', variant: 'warning' });
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]) {
+              setImageUrl(result.assets[0].uri);
+            }
+          },
         },
-      },
-      {
-        text: 'Gallery',
-        onPress: async () => {
-          const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (!permission.granted) {
-            showToast('Permission Needed', { message: 'Gallery access is required to pick photos.', variant: 'warning' });
-            return;
-          }
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          });
-          if (!result.canceled && result.assets[0]) {
-            setImageUrl(result.assets[0].uri);
-          }
+        {
+          text: 'Gallery',
+          onPress: async () => {
+            const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!permission.granted) {
+              showToast('Permission Needed', { message: 'Gallery access is required to pick photos.', variant: 'warning' });
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]) {
+              setImageUrl(result.assets[0].uri);
+            }
+          },
         },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    });
   };
 
   const handleImport = async () => {
@@ -169,37 +149,114 @@ export default function AddProductScreen() {
     }
   };
 
+  // ── Search handlers ──────────────────────────────────────────────────────
+
+  const handleSearchQueryChange = useCallback(
+    (text: string) => {
+      setSearchQuery(text);
+      // Debounce: trigger search 500ms after user stops typing
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      if (text.trim().length >= 2) {
+        searchTimerRef.current = setTimeout(() => {
+          search(text.trim());
+        }, 500);
+      } else {
+        clearResults();
+      }
+    },
+    [search, clearResults],
+  );
+
+  const handleSearchSubmit = useCallback(() => {
+    if (searchQuery.trim().length >= 2) {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+      search(searchQuery.trim());
+    }
+  }, [searchQuery, search]);
+
+  /**
+   * Called when the user taps a search result.
+   * Checks for duplicates, then populates the form and switches to manual mode.
+   */
+  const handleSelectSearchResult = useCallback(
+    (product: UnifiedProduct) => {
+      const populateForm = () => {
+        if (product.name) setName(product.name);
+        if (product.brand) setBrand(product.brand);
+        if (product.size) setSize(product.size);
+        if (product.image_url) setImageUrl(product.image_url);
+        if (product.source_url) setSourceUrl(product.source_url);
+        if (product.ingredients) setFullIngredients(product.ingredients);
+        if (product.active_ingredients && product.active_ingredients.length > 0) {
+          setActiveIngredients(product.active_ingredients);
+        }
+        if (product.step_category) setStepCategory(product.step_category);
+
+        // Track catalog linkage for save
+        setSelectedCatalogId(product._catalogId || undefined);
+
+        // Switch to form so user can review and set routine details
+        setMode('manual');
+
+        showToast('Product Selected', {
+          message: `${product.name}${product.brand ? ` by ${product.brand}` : ''} — review details below.`,
+          variant: 'success',
+          duration: 3000,
+        });
+      };
+
+      // Check if user already has this product (same name + brand)
+      const normalizedName = product.name.toLowerCase().trim();
+      const normalizedBrand = (product.brand || '').toLowerCase().trim();
+      const duplicate = products.find((p) => {
+        const pName = p.name.toLowerCase().trim();
+        const pBrand = (p.brand || '').toLowerCase().trim();
+        return pName === normalizedName && pBrand === normalizedBrand;
+      });
+
+      if (duplicate) {
+        showConfirm({
+          title: 'Possible Duplicate',
+          message: `A product named "${product.name}"${product.brand ? ` by ${product.brand}` : ''} already exists in your products. Add it anyway?`,
+          buttons: [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Add Anyway', onPress: populateForm },
+          ],
+        });
+      } else {
+        populateForm();
+      }
+    },
+    [products, showToast, showConfirm],
+  );
+
+  // ── Save handler ───────────────────────────────────────────────────────
+
   const handleSave = async () => {
     if (!name.trim()) {
       showToast('Missing Name', { message: 'Please enter a product name.', variant: 'warning' });
       return;
     }
 
-    await addProduct({
-      name: name.trim(),
-      brand: brand.trim() || undefined,
-      size: size.trim() || undefined,
-      image_url: imageUrl.trim() || undefined,
-      source_url: sourceUrl.trim() || undefined,
-      step_category: stepCategory,
-      time_of_day: timeOfDay,
-      times_per_week: scheduleType === 'weekly' ? scheduleDays.length || 7 : scheduleType === 'interval' ? Math.round(7 / (parseInt(intervalDays, 10) || 1)) : 7,
-      schedule_type: scheduleType,
-      schedule_days: scheduleType === 'weekly' ? scheduleDays : undefined,
-      schedule_cycle_length: scheduleType === 'cycle' ? parseInt(cycleLength, 10) : undefined,
-      schedule_cycle_days: scheduleType === 'cycle' ? cycleDays : undefined,
-      schedule_cycle_start_date: scheduleType === 'cycle' ? todayStr : undefined,
-      schedule_interval_days: scheduleType === 'interval' ? parseInt(intervalDays, 10) : undefined,
-      schedule_interval_start_date: scheduleType === 'interval' ? todayStr : undefined,
-      active_ingredients: activeIngredients.length > 0 ? activeIngredients.join(', ') : undefined,
-      full_ingredients: fullIngredients.trim() || undefined,
-      longevity_months: longevityMonths ? parseInt(longevityMonths, 10) || undefined : undefined,
-      date_purchased: datePurchased.trim() || undefined,
-      date_opened: dateOpened.trim() || undefined,
-      notes: notes.trim() || undefined,
-      started_at: startedAt,
-      stopped_at: undefined,
-    });
+    await addProduct(
+      {
+        catalog_id: selectedCatalogId,
+        name: name.trim(),
+        brand: brand.trim() || undefined,
+        size: size.trim() || undefined,
+        image_url: imageUrl.trim() || undefined,
+        source_url: sourceUrl.trim() || undefined,
+        step_category: stepCategory,
+        active_ingredients: activeIngredients.length > 0 ? activeIngredients.join(', ') : undefined,
+        full_ingredients: fullIngredients.trim() || undefined,
+        longevity_months: longevityMonths ? parseInt(longevityMonths, 10) || undefined : undefined,
+        date_purchased: datePurchased.trim() || undefined,
+        date_opened: dateOpened.trim() || undefined,
+        notes: notes.trim() || undefined,
+        started_at: startedAt,
+      },
+      selectedCatalogId,
+    );
 
     router.back();
   };
@@ -209,16 +266,16 @@ export default function AddProductScreen() {
       {/* Mode toggle */}
       <View style={styles.modeToggle}>
         <TouchableOpacity
-          style={[styles.modeButton, mode === 'manual' && styles.modeButtonActive]}
-          onPress={() => setMode('manual')}
+          style={[styles.modeButton, mode === 'search' && styles.modeButtonActive]}
+          onPress={() => setMode('search')}
         >
           <Ionicons
-            name="create-outline"
+            name="search-outline"
             size={16}
-            color={mode === 'manual' ? colors.textOnPrimary : colors.textSecondary}
+            color={mode === 'search' ? colors.textOnPrimary : colors.textSecondary}
           />
-          <Text style={[styles.modeText, mode === 'manual' && styles.modeTextActive]}>
-            Add Manually
+          <Text style={[styles.modeText, mode === 'search' && styles.modeTextActive]}>
+            Search
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -231,10 +288,131 @@ export default function AddProductScreen() {
             color={mode === 'import' ? colors.textOnPrimary : colors.textSecondary}
           />
           <Text style={[styles.modeText, mode === 'import' && styles.modeTextActive]}>
-            Import from URL
+            URL
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.modeButton, mode === 'manual' && styles.modeButtonActive]}
+          onPress={() => setMode('manual')}
+        >
+          <Ionicons
+            name="create-outline"
+            size={16}
+            color={mode === 'manual' ? colors.textOnPrimary : colors.textSecondary}
+          />
+          <Text style={[styles.modeText, mode === 'manual' && styles.modeTextActive]}>
+            Manual
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Search section */}
+      {mode === 'search' && (
+        <View style={styles.searchSection}>
+          <Text style={styles.importHint}>
+            Search by product name or brand to find and add products.
+          </Text>
+          <View style={styles.searchInputRow}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search-outline" size={18} color={colors.textLight} style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.searchInput}
+                value={searchQuery}
+                onChangeText={handleSearchQueryChange}
+                placeholder="e.g., Niacinamide, CeraVe, The Ordinary..."
+                placeholderTextColor={colors.textLight}
+                onSubmitEditing={handleSearchSubmit}
+                returnKeyType="search"
+                autoFocus
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSearchQuery('');
+                    clearResults();
+                  }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="close-circle" size={18} color={colors.textLight} />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Search results */}
+          {isSearching && (
+            <View style={styles.searchLoading}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.searchLoadingText}>Searching...</Text>
+            </View>
+          )}
+
+          {!isSearching && hasSearched && searchResults.length === 0 && (
+            <View style={styles.searchEmpty}>
+              <Ionicons name="search-outline" size={32} color={colors.textLight} />
+              <Text style={styles.searchEmptyText}>No products found</Text>
+              <Text style={styles.searchEmptyHint}>
+                Try a different search term, or add the product manually.
+              </Text>
+            </View>
+          )}
+
+          {!isSearching && searchResults.length > 0 && (
+            <View style={styles.searchResultsList}>
+              <Text style={styles.searchResultsCount}>
+                {searchResults.length} product{searchResults.length !== 1 ? 's' : ''} found
+              </Text>
+              {searchResults.map((product, index) => {
+                const catInfo = product.step_category
+                  ? CATEGORY_INFO[product.step_category]
+                  : null;
+                return (
+                  <TouchableOpacity
+                    key={`${product._source}-${product._catalogId || product._obfCode || index}`}
+                    style={styles.searchResultCard}
+                    onPress={() => handleSelectSearchResult(product)}
+                    activeOpacity={0.7}
+                  >
+                    {product.image_url ? (
+                      <Image
+                        source={{ uri: product.image_url }}
+                        style={styles.searchResultImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View style={styles.searchResultImagePlaceholder}>
+                        <Ionicons
+                          name={(catInfo?.icon || 'flask-outline') as any}
+                          size={22}
+                          color={colors.textLight}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.searchResultInfo}>
+                      <Text style={styles.searchResultName} numberOfLines={2}>
+                        {product.name}
+                      </Text>
+                      {product.brand ? (
+                        <Text style={styles.searchResultBrand} numberOfLines={1}>
+                          {product.brand}
+                        </Text>
+                      ) : null}
+                      {catInfo && (
+                        <View style={[styles.searchCategoryBadge, { backgroundColor: catInfo.color + '20' }]}>
+                          <Text style={[styles.searchCategoryText, { color: catInfo.color }]}>
+                            {catInfo.label}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+        </View>
+      )}
 
       {/* Import section */}
       {mode === 'import' && (
@@ -269,7 +447,9 @@ export default function AddProductScreen() {
         </View>
       )}
 
-      {/* Product photo */}
+      {/* ── Form (hidden when in search mode) ──────────────────────── */}
+      {mode !== 'search' && (
+      <>
       <Text style={styles.label}>PRODUCT PHOTO</Text>
       {imageUrl ? (
         <View style={styles.imagePreview}>
@@ -341,151 +521,6 @@ export default function AddProductScreen() {
         placeholder="e.g., 100ml, 50g, 1.7 oz"
         placeholderTextColor={colors.textLight}
       />
-
-      {/* ── Routine Placement ────────────────────────────────── */}
-
-      <Text style={styles.sectionTitle}>Routine Placement</Text>
-
-      <Text style={styles.label}>WHEN TO USE</Text>
-      <View style={styles.pillRow}>
-        {TIME_OF_DAY_USAGE_OPTIONS.map((option) => {
-          const selected = timeOfDay === option.key;
-          return (
-            <TouchableOpacity
-              key={option.key}
-              style={[styles.pill, selected && styles.pillSelected]}
-              onPress={() => setTimeOfDay(option.key)}
-            >
-              <Ionicons
-                name={option.icon as any}
-                size={16}
-                color={selected ? colors.textOnPrimary : colors.textSecondary}
-              />
-              <Text style={[styles.pillText, selected && styles.pillTextSelected]}>
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <Text style={styles.label}>SCHEDULE</Text>
-      <View style={styles.scheduleTypeRow}>
-        {SCHEDULE_TYPE_OPTIONS.map((option) => {
-          const selected = scheduleType === option.key;
-          return (
-            <TouchableOpacity
-              key={option.key}
-              style={[styles.scheduleTypeBtn, selected && styles.scheduleTypeBtnSelected]}
-              onPress={() => setScheduleType(option.key)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={option.icon as any}
-                size={16}
-                color={selected ? colors.textOnPrimary : colors.textSecondary}
-              />
-              <Text style={[styles.scheduleTypeText, selected && styles.scheduleTypeTextSelected]}>
-                {option.label}
-              </Text>
-              <Text style={[styles.scheduleTypeDesc, selected && styles.scheduleTypeDescSelected]}>
-                {option.description}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {scheduleType === 'weekly' && (
-        <>
-          <Text style={styles.label}>DAYS OF THE WEEK</Text>
-          <View style={styles.daysRow}>
-            {DAYS_OF_WEEK.map((day) => {
-              const selected = scheduleDays.includes(day.key);
-              return (
-                <TouchableOpacity
-                  key={day.key}
-                  style={[styles.dayCircle, selected && styles.dayCircleSelected]}
-                  onPress={() => toggleDay(day.key)}
-                >
-                  <Text style={[styles.dayText, selected && styles.dayTextSelected]}>
-                    {day.short}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <TouchableOpacity
-            style={styles.selectAll}
-            onPress={() => setScheduleDays(scheduleDays.length === ALL_DAYS.length ? [] : [...ALL_DAYS])}
-          >
-            <Text style={styles.selectAllText}>
-              {scheduleDays.length === ALL_DAYS.length ? 'Deselect All' : 'Select All'}
-            </Text>
-          </TouchableOpacity>
-        </>
-      )}
-
-      {scheduleType === 'cycle' && (
-        <>
-          <Text style={styles.label}>CYCLE LENGTH (DAYS)</Text>
-          <TextInput
-            style={styles.input}
-            value={cycleLength}
-            onChangeText={handleCycleLengthChange}
-            placeholder="e.g., 4"
-            placeholderTextColor={colors.textLight}
-            keyboardType="number-pad"
-          />
-          {parsedCycleLength >= 2 && (
-            <>
-              <Text style={styles.label}>ACTIVE ON WHICH DAYS?</Text>
-              <View style={styles.cycleDaysRow}>
-                {Array.from({ length: parsedCycleLength }, (_, i) => i + 1).map((day) => {
-                  const selected = cycleDays.includes(day);
-                  return (
-                    <TouchableOpacity
-                      key={day}
-                      style={[styles.cycleDayBtn, selected && styles.cycleDayBtnSelected]}
-                      onPress={() => toggleCycleDay(day)}
-                    >
-                      <Text style={[styles.cycleDayNum, selected && styles.cycleDayNumSelected]}>
-                        {day}
-                      </Text>
-                      <Text style={[styles.cycleDayLabel, selected && styles.cycleDayLabelSelected]}>
-                        Day {day}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={styles.scheduleHint}>
-                Cycle starts today and repeats every {parsedCycleLength} days.
-              </Text>
-            </>
-          )}
-        </>
-      )}
-
-      {scheduleType === 'interval' && (
-        <>
-          <Text style={styles.label}>REPEAT EVERY</Text>
-          <View style={styles.intervalRow}>
-            <TextInput
-              style={[styles.input, styles.intervalInput]}
-              value={intervalDays}
-              onChangeText={setIntervalDays}
-              placeholder="3"
-              placeholderTextColor={colors.textLight}
-              keyboardType="number-pad"
-            />
-            <Text style={styles.intervalUnit}>days</Text>
-          </View>
-          <Text style={styles.scheduleHint}>
-            First occurrence is today, then every {parseInt(intervalDays, 10) || '…'} days after that.
-          </Text>
-        </>
-      )}
 
       {/* ── Ingredients ──────────────────────────────────────── */}
 
@@ -568,6 +603,8 @@ export default function AddProductScreen() {
       </TouchableOpacity>
 
       <View style={{ height: Spacing.xxl }} />
+      </>
+      )}
     </ScrollView>
   );
 }
@@ -596,8 +633,115 @@ const createStyles = (colors: any) => StyleSheet.create({
   modeButtonActive: {
     backgroundColor: colors.primary,
   },
-  modeText: { ...Typography.button, fontSize: 13, color: colors.textSecondary },
+  modeText: { ...Typography.button, fontSize: 12, color: colors.textSecondary },
   modeTextActive: { color: colors.textOnPrimary },
+
+  // Search section
+  searchSection: {
+    gap: Spacing.sm,
+    marginBottom: Spacing.md,
+  },
+  searchInputRow: {
+    flexDirection: 'row',
+    gap: Spacing.sm,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm + 2,
+  },
+  searchInput: {
+    ...Typography.body,
+    flex: 1,
+    padding: 0,
+    color: colors.text,
+  },
+  searchLoading: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  searchLoadingText: {
+    ...Typography.bodySmall,
+    color: colors.textSecondary,
+  },
+  searchEmpty: {
+    alignItems: 'center',
+    paddingVertical: Spacing.xl,
+    gap: Spacing.sm,
+  },
+  searchEmptyText: {
+    ...Typography.subtitle,
+    color: colors.textSecondary,
+  },
+  searchEmptyHint: {
+    ...Typography.bodySmall,
+    color: colors.textLight,
+    textAlign: 'center',
+  },
+  searchResultsList: {
+    gap: Spacing.xs,
+  },
+  searchResultsCount: {
+    ...Typography.label,
+    color: colors.textSecondary,
+    marginBottom: Spacing.xs,
+  },
+  searchResultCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: BorderRadius.md,
+    padding: Spacing.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  searchResultImage: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  searchResultImagePlaceholder: {
+    width: 52,
+    height: 52,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchResultInfo: {
+    flex: 1,
+    marginHorizontal: Spacing.md,
+  },
+  searchResultName: {
+    ...Typography.body,
+    fontWeight: '600',
+    marginBottom: 2,
+    color: colors.text,
+  },
+  searchResultBrand: {
+    ...Typography.caption,
+    color: colors.textSecondary,
+    marginBottom: 4,
+  },
+  searchCategoryBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.pill,
+  },
+  searchCategoryText: {
+    ...Typography.caption,
+    fontSize: 10,
+    fontWeight: '600',
+  },
 
   // Import section
   importSection: {
@@ -708,24 +852,7 @@ const createStyles = (colors: any) => StyleSheet.create({
   dateRow: { flexDirection: 'row', gap: Spacing.sm },
   dateField: { flex: 1 },
 
-  // Pills & chips
-  pillRow: { flexDirection: 'row', gap: Spacing.sm },
-  pill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: Spacing.sm + 3,
-    borderRadius: BorderRadius.pill,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    gap: 6,
-  },
-  pillSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  pillText: { ...Typography.button, fontSize: 12, color: colors.textSecondary },
-  pillTextSelected: { color: colors.textOnPrimary },
-
+  // Chips (e.g. category)
   chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   chip: {
     flexDirection: 'row',
@@ -741,76 +868,6 @@ const createStyles = (colors: any) => StyleSheet.create({
   chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   chipText: { ...Typography.caption, color: colors.textSecondary, fontSize: 12 },
   chipTextSelected: { color: colors.textOnPrimary },
-
-  // Schedule type selector
-  scheduleTypeRow: { flexDirection: 'row', gap: Spacing.sm },
-  scheduleTypeBtn: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: Spacing.sm + 4,
-    paddingHorizontal: Spacing.xs,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    gap: 4,
-  },
-  scheduleTypeBtnSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  scheduleTypeText: { ...Typography.button, fontSize: 13, color: colors.textSecondary },
-  scheduleTypeTextSelected: { color: colors.textOnPrimary },
-  scheduleTypeDesc: { ...Typography.caption, fontSize: 10, color: colors.textLight, textAlign: 'center' },
-  scheduleTypeDescSelected: { color: colors.primaryLight },
-
-  // Weekly days
-  daysRow: { flexDirection: 'row', gap: Spacing.sm },
-  dayCircle: {
-    flex: 1,
-    aspectRatio: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-  },
-  dayCircleSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  dayText: { ...Typography.button, fontSize: 12, color: colors.textSecondary },
-  dayTextSelected: { color: colors.textOnPrimary },
-  selectAll: { alignSelf: 'flex-end', marginTop: Spacing.xs, paddingVertical: 4 },
-  selectAllText: { ...Typography.caption, color: colors.primary, fontWeight: '600' },
-
-  // Cycle days
-  cycleDaysRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  cycleDayBtn: {
-    alignItems: 'center',
-    paddingVertical: Spacing.sm + 2,
-    paddingHorizontal: Spacing.md,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    minWidth: 60,
-    gap: 2,
-  },
-  cycleDayBtnSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  cycleDayNum: { ...Typography.subtitle, fontSize: 16, color: colors.textSecondary },
-  cycleDayNumSelected: { color: colors.textOnPrimary },
-  cycleDayLabel: { ...Typography.caption, fontSize: 10, color: colors.textLight },
-  cycleDayLabelSelected: { color: colors.primaryLight },
-
-  // Interval
-  intervalRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  intervalInput: { flex: 0, width: 80, textAlign: 'center' },
-  intervalUnit: { ...Typography.body, fontWeight: '500', color: colors.textSecondary },
-
-  // Schedule hint
-  scheduleHint: {
-    ...Typography.caption,
-    fontSize: 11,
-    color: colors.textLight,
-    marginTop: Spacing.sm,
-    fontStyle: 'italic',
-  },
 
   // Longevity chips
   longevityRow: {

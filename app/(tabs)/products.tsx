@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Image,
   ActivityIndicator,
 } from 'react-native';
@@ -18,14 +17,26 @@ import { useProducts } from '../../src/hooks/useProducts';
 import { useWishlist } from '../../src/hooks/useWishlist';
 import { useProductCatalog } from '../../src/hooks/useProductCatalog';
 import { useToast } from '../../src/components/Toast';
+import { useConfirm } from '../../src/contexts/ConfirmContext';
 import { CATEGORIES, CATEGORY_INFO } from '../../src/constants/skincare';
 import { ProductCard } from '../../src/components/ProductCard';
 import { SectionHeader } from '../../src/components/SectionHeader';
 import { EmptyState } from '../../src/components/EmptyState';
-import type { Product, CatalogProduct, StepCategory } from '../../src/types';
+import type { Product, CatalogProduct, StepCategory, WishlistItem } from '../../src/types';
 
 type TopTab = 'my-products' | 'explore';
 type ProductFilter = 'active' | 'stopped' | 'all' | 'wishlist';
+
+// True if this wishlist item is already in the user's products (active or on shelf).
+function isWishlistItemInProducts(item: WishlistItem, products: Product[]): boolean {
+  const nameNorm = (item.product_name || '').toLowerCase().trim();
+  const brandNorm = (item.brand || '').toLowerCase().trim();
+  return products.some(
+    (p) =>
+      (p.name || '').toLowerCase().trim() === nameNorm &&
+      (p.brand || '').toLowerCase().trim() === brandNorm,
+  );
+}
 
 // ─── My Products Section ─────────────────────────────────────────────────────
 
@@ -35,8 +46,15 @@ function MyProductsSection() {
   const { activeProducts, inactiveProducts, products, stopProduct, restartProduct } =
     useProducts();
   const { wishlist, removeFromWishlist } = useWishlist();
+  const { showConfirm } = useConfirm();
   const [filter, setFilter] = useState<ProductFilter>('active');
   const styles = createStyles(colors);
+
+  // Wishlist without items that are already in the user's products (active or on shelf).
+  const wishlistFiltered = React.useMemo(
+    () => wishlist.filter((item) => !isWishlistItemInProducts(item, products)),
+    [wishlist, products],
+  );
 
   const displayProducts =
     filter === 'active'
@@ -52,32 +70,32 @@ function MyProductsSection() {
   };
 
   const handleStop = (product: Product) => {
-    Alert.alert(
-      'Stop Using Product',
-      `Mark "${product.name}" as stopped? You can restart it later.`,
-      [
+    showConfirm({
+      title: 'Move to shelf',
+      message: `Move "${product.name}" to On my shelf? You can add it back to active later.`,
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Stop', style: 'destructive', onPress: () => stopProduct(product.id) },
+        { text: 'Move to shelf', style: 'destructive', onPress: () => stopProduct(product.id) },
       ],
-    );
+    });
   };
 
   const handleRestart = (product: Product) => {
-    Alert.alert(
-      'Restart Product',
-      `Start using "${product.name}" again from today?`,
-      [
+    showConfirm({
+      title: 'Restart Product',
+      message: `Start using "${product.name}" again from today?`,
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Restart', onPress: () => restartProduct(product.id) },
       ],
-    );
+    });
   };
 
   const filters: { key: ProductFilter; label: string; count: number; icon?: string }[] = [
     { key: 'active', label: 'Active', count: activeProducts.length },
-    { key: 'stopped', label: 'Stopped', count: inactiveProducts.length },
+    { key: 'stopped', label: 'On my shelf', count: inactiveProducts.length },
     { key: 'all', label: 'All', count: products.length },
-    { key: 'wishlist', label: 'Wishlist', count: wishlist.length, icon: 'heart' },
+    { key: 'wishlist', label: 'Wishlist', count: wishlistFiltered.length, icon: 'heart' },
   ];
 
   return (
@@ -115,20 +133,20 @@ function MyProductsSection() {
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {filter === 'wishlist' ? (
-          wishlist.length === 0 ? (
+          wishlistFiltered.length === 0 ? (
             <EmptyState
               icon="heart-outline"
               title="No wishlist items"
-              message="Heart products in Explore to add them to your wishlist."
+              message="Heart products in Explore to add them to your wishlist. Items you're already using or have on your shelf are hidden here."
             />
           ) : (
             <>
               <SectionHeader
                 icon="heart"
                 title="Wishlist"
-                subtitle={`${wishlist.length} item${wishlist.length !== 1 ? 's' : ''}`}
+                subtitle={`${wishlistFiltered.length} item${wishlistFiltered.length !== 1 ? 's' : ''}`}
               />
-              {wishlist.map((item) => (
+              {wishlistFiltered.map((item) => (
                 <View key={item.id} style={styles.wishlistCard}>
                   {item.image_url ? (
                     <Image source={{ uri: item.image_url }} style={styles.wishlistImage} resizeMode="cover" />
@@ -154,12 +172,12 @@ function MyProductsSection() {
         ) : displayProducts.length === 0 ? (
           <EmptyState
             icon="flask-outline"
-            title={filter === 'active' ? 'No active products' : filter === 'stopped' ? 'No stopped products' : 'No products yet'}
+            title={filter === 'active' ? 'No active products' : filter === 'stopped' ? 'No products on shelf' : 'No products yet'}
             message={
               filter === 'active'
                 ? 'Track the products in your skincare routine with the + button.'
                 : filter === 'stopped'
-                  ? "Products you've stopped using will appear here."
+                  ? 'Products on your shelf (previously used) will appear here.'
                   : 'Start tracking your skincare products.'
             }
           />
@@ -171,7 +189,7 @@ function MyProductsSection() {
                 filter === 'active'
                   ? 'Currently Using'
                   : filter === 'stopped'
-                    ? 'Previously Used'
+                    ? 'On my shelf'
                     : 'All Products'
               }
               subtitle={`${displayProducts.length} product${displayProducts.length !== 1 ? 's' : ''}`}

@@ -6,13 +6,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   RefreshControl,
-  Alert,
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
 import { useTheme } from '../../src/contexts/ThemeContext';
+import { useConfirm } from '../../src/contexts/ConfirmContext';
 import { useRoutine } from '../../src/hooks/useRoutine';
 import { useProducts } from '../../src/hooks/useProducts';
 import { ProgressRing } from '../../src/components/ProgressRing';
@@ -33,11 +33,15 @@ function getGreeting(): string {
 }
 
 function getTimeLabel(t: TimeOfDay): string {
-  return t === 'morning' ? 'Morning' : 'Evening';
+  if (t === 'morning') return 'Morning';
+  if (t === 'evening') return 'Evening';
+  return 'Morning & Evening';
 }
 
 function getTimeIcon(t: TimeOfDay): string {
-  return t === 'morning' ? 'sunny-outline' : 'moon-outline';
+  if (t === 'morning') return 'sunny-outline';
+  if (t === 'evening') return 'moon-outline';
+  return 'time-outline';
 }
 
 // ─── Screen ─────────────────────────────────────────────────────────────────
@@ -53,6 +57,7 @@ export default function TodayScreen() {
     reload,
   } = useRoutine();
   const { allConflicts, getProductsForDate } = useProducts();
+  const { showConfirm } = useConfirm();
   const { colors } = useTheme();
   const styles = createStyles(colors);
 
@@ -73,17 +78,14 @@ export default function TodayScreen() {
 
     if (unactioned.length === 0) return;
 
-    Alert.alert(
-      'Finish Routine',
-      `${unactioned.length} step${unactioned.length !== 1 ? 's' : ''} not yet actioned. Mark them as skipped and finish?`,
-      [
+    showConfirm({
+      title: 'Finish Routine',
+      message: `${unactioned.length} step${unactioned.length !== 1 ? 's' : ''} not yet actioned. Mark them as skipped and finish?`,
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Finish',
-          onPress: () => finishRoutine(timeOfDay),
-        },
+        { text: 'Finish', onPress: () => finishRoutine(timeOfDay) },
       ],
-    );
+    });
   };
 
   return (

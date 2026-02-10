@@ -227,7 +227,7 @@ function cleanText(text: string | undefined): string | undefined {
     .trim() || undefined;
 }
 
-function guessCategory(name?: string, description?: string): StepCategory | undefined {
+export function guessCategory(name?: string, description?: string): StepCategory | undefined {
   const text = `${name || ''} ${description || ''}`.toLowerCase();
 
   if (/\bcleans(er|ing)\b|\bface\s*wash\b|\bmicellar\b/.test(text)) return 'cleanser';

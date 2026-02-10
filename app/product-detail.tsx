@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
 import { useTheme } from '../src/contexts/ThemeContext';
 import { useProducts } from '../src/hooks/useProducts';
-import { CATEGORY_INFO, TIME_OF_DAY_USAGE_OPTIONS, DAYS_OF_WEEK } from '../src/constants/skincare';
+import { CATEGORY_INFO } from '../src/constants/skincare';
 import { ConflictWarnings } from '../src/components/ConflictWarnings';
 import { ProductComments } from '../src/components/ProductComments';
 import { formatDateShort } from '../src/lib/dateUtils';
@@ -48,30 +48,7 @@ export default function ProductDetailScreen() {
     );
   }
 
-  const category = CATEGORY_INFO[product.step_category];
-  const timeLabel = TIME_OF_DAY_USAGE_OPTIONS.find((t) => t.key === product.time_of_day)?.label;
-
-  // Build schedule label
-  const scheduleLabel = (() => {
-    const st = product.schedule_type;
-    if (!st || st === 'weekly') {
-      const days = product.schedule_days;
-      if (!days || days.length === 0 || days.length === 7) return 'Daily';
-      return days.map((d) => DAYS_OF_WEEK.find((dw) => dw.key === d)?.short || d).join(', ');
-    }
-    if (st === 'cycle') {
-      const len = product.schedule_cycle_length;
-      const active = product.schedule_cycle_days;
-      if (len && active) return `${active.length} of ${len}-day cycle`;
-      return 'Cycle';
-    }
-    if (st === 'interval') {
-      const interval = product.schedule_interval_days;
-      if (interval) return `Every ${interval} day${interval !== 1 ? 's' : ''}`;
-      return 'Interval';
-    }
-    return 'Daily';
-  })();
+  const category = CATEGORY_INFO[product.step_category ?? 'other'];
 
   // Expiry calculation
   let expiryLabel: string | null = null;
@@ -107,7 +84,7 @@ export default function ProductDetailScreen() {
       <View style={styles.statusRow}>
         <View style={[styles.statusBadge, product.stopped_at ? styles.statusInactive : styles.statusActive]}>
           <Text style={[styles.statusText, product.stopped_at ? styles.statusTextInactive : styles.statusTextActive]}>
-            {product.stopped_at ? 'Stopped' : 'Active'}
+            {product.stopped_at ? 'On my shelf' : 'Active'}
           </Text>
         </View>
         <View style={styles.categoryPill}>
@@ -125,8 +102,6 @@ export default function ProductDetailScreen() {
 
       {/* Quick info */}
       <View style={styles.card}>
-        <InfoRow label="Schedule" value={scheduleLabel} icon="repeat-outline" />
-        <InfoRow label="Time of Day" value={timeLabel} icon="time-outline" />
         {product.longevity_months && (
           <InfoRow label="Period After Opening" value={`${product.longevity_months} months`} icon="hourglass-outline" />
         )}
@@ -140,7 +115,7 @@ export default function ProductDetailScreen() {
         <InfoRow label="Added to Routine" value={formatDateShort(product.started_at)} icon="add-circle-outline" />
         {product.date_purchased && <InfoRow label="Purchased" value={formatDateShort(product.date_purchased)} icon="cart-outline" />}
         {product.date_opened && <InfoRow label="Opened" value={formatDateShort(product.date_opened)} icon="open-outline" />}
-        {product.stopped_at && <InfoRow label="Stopped" value={formatDateShort(product.stopped_at)} icon="close-circle-outline" />}
+        {product.stopped_at && <InfoRow label="On shelf since" value={formatDateShort(product.stopped_at)} icon="close-circle-outline" />}
       </View>
 
       {/* Active Ingredients */}

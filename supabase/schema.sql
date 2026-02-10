@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS routine_steps (
     'cleanser', 'toner', 'serum', 'moisturizer', 'sunscreen',
     'exfoliant', 'mask', 'eye_cream', 'lip_care', 'treatment', 'other'
   )),
-  time_of_day TEXT NOT NULL CHECK (time_of_day IN ('morning', 'evening')),
+  time_of_day TEXT NOT NULL CHECK (time_of_day IN ('morning', 'evening', 'both')),
   "order" INTEGER NOT NULL DEFAULT 0,
   notes TEXT,
 
@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS routine_steps (
 );
 
 CREATE INDEX IF NOT EXISTS idx_routine_steps_user ON routine_steps(user_id);
+-- product_id added by migration restructure_products_and_routine.sql
 
 -- ─── Completed Steps ────────────────────────────────────────────────────────
 
@@ -135,53 +136,33 @@ CREATE INDEX IF NOT EXISTS idx_product_catalog_brand ON product_catalog(brand);
 CREATE INDEX IF NOT EXISTS idx_product_catalog_category ON product_catalog(step_category);
 CREATE INDEX IF NOT EXISTS idx_product_catalog_popular ON product_catalog(times_added DESC);
 
--- ─── Products (user-specific) ───────────────────────────────────────────────
+-- ─── Products (user-specific instance; generic data in product_catalog) ──────
 
 CREATE TABLE IF NOT EXISTS products (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-  catalog_id UUID REFERENCES product_catalog(id) ON DELETE SET NULL,  -- link to shared catalog
+  catalog_id UUID REFERENCES product_catalog(id) ON DELETE SET NULL,
 
-  -- Core info (copied from catalog or entered manually)
-  name TEXT NOT NULL,
+  -- Overrides only when catalog_id IS NULL (custom product)
+  name TEXT,
   brand TEXT,
-  size TEXT,
   image_url TEXT,
-  source_url TEXT,
-
-  -- Routine placement
-  step_category TEXT NOT NULL CHECK (step_category IN (
+  step_category TEXT CHECK (step_category IS NULL OR step_category IN (
     'cleanser', 'toner', 'serum', 'moisturizer', 'sunscreen',
     'exfoliant', 'mask', 'eye_cream', 'lip_care', 'treatment', 'other'
   )),
-  time_of_day TEXT NOT NULL CHECK (time_of_day IN ('morning', 'evening', 'both')),
-  times_per_week INTEGER NOT NULL DEFAULT 7 CHECK (times_per_week BETWEEN 1 AND 7),
 
-  -- Ingredients
-  active_ingredients TEXT,
-  full_ingredients TEXT,
-
-  -- Longevity & dates
+  -- User-specific
   longevity_months INTEGER CHECK (longevity_months > 0),
   date_purchased DATE,
   date_opened DATE,
-
-  -- Usage
   notes TEXT,
   started_at DATE NOT NULL DEFAULT CURRENT_DATE,
   stopped_at DATE,
 
-  -- Scheduling: supports weekly, cycle (repeating N-day rota), or interval (every X days)
-  schedule_type TEXT CHECK (schedule_type IN ('weekly', 'cycle', 'interval')),
-  schedule_days TEXT[],                    -- For weekly: days of week
-  schedule_cycle_length INTEGER,           -- For cycle: total days in cycle
-  schedule_cycle_days INTEGER[],           -- For cycle: 1-indexed active days
-  schedule_cycle_start_date DATE,          -- For cycle: anchor date
-  schedule_interval_days INTEGER,          -- For interval: every X days
-  schedule_interval_start_date DATE,       -- For interval: anchor date
-
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT products_catalog_or_name_check CHECK (catalog_id IS NOT NULL OR (name IS NOT NULL AND name <> ''))
 );
 
 CREATE INDEX IF NOT EXISTS idx_products_user ON products(user_id);
@@ -209,6 +190,7 @@ CREATE TABLE IF NOT EXISTS journal_entries (
   type TEXT NOT NULL CHECK (type IN ('comment', 'photo')),
   text TEXT,
   image_url TEXT, -- Supabase Storage URL (bucket: journal-photos)
+  tags TEXT[] DEFAULT '{}', -- e.g. Breakout, Redness, Glowing
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 

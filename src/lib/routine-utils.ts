@@ -1,22 +1,16 @@
-import type { DayOfWeek, ScheduleType } from '../types';
-import { useRoutineContext } from '../contexts/RoutineContext';
+import type { RoutineStep, DayOfWeek, ScheduleType } from '../types';
 
-// Re-export for consumers that need the type
-export type { RoutineContextValue } from '../contexts/RoutineContext';
-
-// ─── Schedule helpers (used by other modules) ───────────────────────────────
-
-function daysBetween(from: string, to: string): number {
+export function daysBetween(from: string, to: string): number {
   const a = new Date(from + 'T00:00:00');
   const b = new Date(to + 'T00:00:00');
   return Math.floor((b.getTime() - a.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-export function isStepActiveOnDate(
-  step: { schedule_type?: ScheduleType; days?: DayOfWeek[]; cycle_length?: number; cycle_days?: number[]; cycle_start_date?: string; interval_days?: number; interval_start_date?: string },
-  dateStr: string,
-): boolean {
-  const scheduleType: ScheduleType | undefined = step.schedule_type || 'weekly';
+/**
+ * Whether a routine step is active on the given date (YYYY-MM-DD).
+ */
+export function isStepActiveOnDate(step: RoutineStep, dateStr: string): boolean {
+  const scheduleType: ScheduleType = step.schedule_type || 'weekly';
 
   switch (scheduleType) {
     case 'weekly': {
@@ -49,10 +43,4 @@ export function isStepActiveOnDate(
     default:
       return false;
   }
-}
-
-// ─── Hook ───────────────────────────────────────────────────────────────────
-
-export function useRoutine() {
-  return useRoutineContext();
 }

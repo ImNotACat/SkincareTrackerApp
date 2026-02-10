@@ -3,17 +3,17 @@ import { View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
-import { CATEGORY_INFO, TIME_OF_DAY_USAGE_OPTIONS, DAYS_OF_WEEK } from '../constants/skincare';
-import type { Product } from '../types';
+import { CATEGORY_INFO } from '../constants/skincare';
+import type { ProductWithCatalog } from '../types';
 
 interface ProductCardProps {
-  product: Product;
-  onPress: (product: Product) => void;
-  onStop?: (product: Product) => void;
-  onRestart?: (product: Product) => void;
+  product: ProductWithCatalog;
+  onPress: (product: ProductWithCatalog) => void;
+  onStop?: (product: ProductWithCatalog) => void;
+  onRestart?: (product: ProductWithCatalog) => void;
 }
 
-function getExpiryInfo(product: Product): { label: string; isWarning: boolean } | null {
+function getExpiryInfo(product: ProductWithCatalog): { label: string; isWarning: boolean } | null {
   if (!product.date_opened || !product.longevity_months) return null;
   const opened = new Date(product.date_opened + 'T00:00:00');
   const expiry = new Date(opened);
@@ -30,28 +30,7 @@ function getExpiryInfo(product: Product): { label: string; isWarning: boolean } 
 export function ProductCard({ product, onPress, onStop, onRestart }: ProductCardProps) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  const category = CATEGORY_INFO[product.step_category];
-  const scheduleLabel = (() => {
-    const st = product.schedule_type;
-    if (!st || st === 'weekly') {
-      const days = product.schedule_days;
-      if (!days || days.length === 0 || days.length === 7) return 'Daily';
-      return days.map((d) => DAYS_OF_WEEK.find((dw) => dw.key === d)?.short || d).join(', ');
-    }
-    if (st === 'cycle') {
-      const len = product.schedule_cycle_length;
-      const active = product.schedule_cycle_days;
-      if (len && active) return `${active.length}/${len}-day cycle`;
-      return 'Cycle';
-    }
-    if (st === 'interval') {
-      const interval = product.schedule_interval_days;
-      if (interval) return `Every ${interval}d`;
-      return 'Interval';
-    }
-    return 'Daily';
-  })();
-  const timeLabel = TIME_OF_DAY_USAGE_OPTIONS.find((t) => t.key === product.time_of_day)?.label;
+  const category = CATEGORY_INFO[product.step_category ?? 'other'];
   const isActive = !product.stopped_at;
   const expiry = getExpiryInfo(product);
 
@@ -106,12 +85,6 @@ export function ProductCard({ product, onPress, onStop, onRestart }: ProductCard
         <View style={styles.metaRow}>
           <View style={styles.pill}>
             <Text style={styles.pillText}>{category.label}</Text>
-          </View>
-          <View style={styles.pill}>
-            <Text style={styles.pillText}>{scheduleLabel}</Text>
-          </View>
-          <View style={styles.pill}>
-            <Text style={styles.pillText}>{timeLabel}</Text>
           </View>
           {expiry && (
             <View style={[styles.pill, expiry.isWarning && styles.pillWarning]}>

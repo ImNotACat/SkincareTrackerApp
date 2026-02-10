@@ -31,8 +31,15 @@ export default function AddEntryScreen() {
 
   const [mode, setMode] = useState<EntryMode>('comment');
   const [text, setText] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+  };
 
   // ── Image Picker ──────────────────────────────────────────────────────────
 
@@ -85,10 +92,12 @@ export default function AddEntryScreen() {
         type: mode === 'photo' ? 'photo' : 'comment',
         text: text.trim() || undefined,
         image_uri: imageUri || undefined,
+        tags: selectedTags.length > 0 ? selectedTags : undefined,
       });
       router.back();
-    } catch {
-      showToast('Error', { message: 'Failed to save entry. Please try again.', variant: 'error' });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to save entry. Please try again.';
+      showToast('Error', { message, variant: 'error' });
     } finally {
       setIsSaving(false);
     }
@@ -189,19 +198,22 @@ export default function AddEntryScreen() {
           textAlignVertical="top"
         />
 
-        {/* Quick tags */}
-        <Text style={styles.label}>QUICK TAGS</Text>
+        {/* Quick tags — stored as separate field */}
+        <Text style={styles.label}>TAGS</Text>
         <View style={styles.tagsRow}>
-          {QUICK_TAGS.map((tag) => (
-            <TouchableOpacity
-              key={tag}
-              style={styles.tag}
-              onPress={() => setText((prev) => (prev ? prev + ', ' + tag : tag))}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.tagText}>{tag}</Text>
-            </TouchableOpacity>
-          ))}
+          {QUICK_TAGS.map((tag) => {
+            const selected = selectedTags.includes(tag);
+            return (
+              <TouchableOpacity
+                key={tag}
+                style={[styles.tag, selected && styles.tagSelected]}
+                onPress={() => toggleTag(tag)}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.tagText, selected && styles.tagTextSelected]}>{tag}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Save */}
@@ -362,12 +374,22 @@ const createStyles = (colors: any) => StyleSheet.create({
     paddingHorizontal: Spacing.sm + 4,
     borderRadius: BorderRadius.pill,
     backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  tagSelected: {
+    backgroundColor: colors.primary + '18',
+    borderColor: colors.primary,
   },
   tagText: {
     ...Typography.bodySmall,
     fontSize: 12,
     fontWeight: '500',
     color: colors.textSecondary,
+  },
+  tagTextSelected: {
+    color: colors.primaryDark,
+    fontWeight: '600',
   },
 
   // Save button

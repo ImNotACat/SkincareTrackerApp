@@ -5,11 +5,11 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../constants/theme';
 import { useTheme } from '../contexts/ThemeContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { useProductComments } from '../hooks/useProductComments';
 
 interface ProductCommentsProps {
@@ -34,6 +34,7 @@ function timeAgo(dateStr: string): string {
 
 export function ProductComments({ productId }: ProductCommentsProps) {
   const { colors } = useTheme();
+  const { showConfirm } = useConfirm();
   const styles = createStyles(colors);
   const { comments, addComment, deleteComment } = useProductComments(productId);
   const [newComment, setNewComment] = useState('');
@@ -45,10 +46,14 @@ export function ProductComments({ productId }: ProductCommentsProps) {
   };
 
   const handleDelete = (commentId: string) => {
-    Alert.alert('Delete Comment', 'Remove this comment?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteComment(commentId) },
-    ]);
+    showConfirm({
+      title: 'Delete Comment',
+      message: 'Remove this comment?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteComment(commentId) },
+      ],
+    });
   };
 
   return (

@@ -5,12 +5,12 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useAuth } from '../../src/contexts/AuthContext';
+import { useConfirm } from '../../src/contexts/ConfirmContext';
 import { useRoutine } from '../../src/hooks/useRoutine';
 import { useProducts } from '../../src/hooks/useProducts';
 import { useToast } from '../../src/components/Toast';
@@ -201,14 +201,19 @@ export default function ProfileScreen() {
   const { activeProducts, products: allProducts } = useProducts();
   const { theme, setTheme } = useTheme();
   const { showToast } = useToast();
+  const { showConfirm } = useConfirm();
   const progress = getTodayProgress();
   const styles = createStyles(colors);
 
   const handleSignOut = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Sign Out', style: 'destructive', onPress: signOut },
-    ]);
+    showConfirm({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: signOut },
+      ],
+    });
   };
 
   return (
@@ -230,7 +235,7 @@ export default function ProfileScreen() {
           { value: steps.length, label: 'Steps' },
           { value: progress.completed, label: 'Done' },
           { value: activeProducts.length, label: 'Products' },
-          { value: allProducts.length - activeProducts.length, label: 'Stopped' },
+          { value: allProducts.length - activeProducts.length, label: 'On my shelf' },
         ].map((stat) => (
           <View key={stat.label} style={styles.statCard}>
             <Text style={styles.statValue}>{stat.value}</Text>

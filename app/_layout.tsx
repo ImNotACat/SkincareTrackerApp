@@ -5,6 +5,8 @@ import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '../src/contexts/AuthContext';
 import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { ProductsProvider } from '../src/contexts/ProductsContext';
+import { RoutineProvider } from '../src/contexts/RoutineContext';
+import { ConfirmProvider } from '../src/contexts/ConfirmContext';
 import { ToastProvider } from '../src/components/Toast';
 
 function RootLayoutNav() {
@@ -59,10 +61,6 @@ function RootLayoutNav() {
           options={{ title: 'Edit Step', presentation: 'modal' }}
         />
         <Stack.Screen
-          name="add-product"
-          options={{ title: 'Add Product', presentation: 'modal' }}
-        />
-        <Stack.Screen
           name="edit-product"
           options={{ title: 'Edit Product', presentation: 'modal' }}
         />
@@ -92,9 +90,13 @@ export default function RootLayout() {
     <ThemeProvider>
       <AuthProvider>
         <ProductsProvider>
-          <ToastProvider>
-            <RootLayoutNav />
-          </ToastProvider>
+          <RoutineProvider>
+            <ConfirmProvider>
+              <ToastProvider>
+                <RootLayoutNav />
+              </ToastProvider>
+            </ConfirmProvider>
+          </RoutineProvider>
         </ProductsProvider>
       </AuthProvider>
     </ThemeProvider>

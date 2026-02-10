@@ -6,7 +6,6 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   Image,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -14,19 +13,13 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Typography, Spacing, BorderRadius } from '../src/constants/theme';
 import { useTheme } from '../src/contexts/ThemeContext';
+import { useConfirm } from '../src/contexts/ConfirmContext';
 import { useProducts } from '../src/hooks/useProducts';
 import { useToast } from '../src/components/Toast';
-import {
-  CATEGORIES,
-  CATEGORY_INFO,
-  TIME_OF_DAY_USAGE_OPTIONS,
-  DAYS_OF_WEEK,
-  ALL_DAYS,
-  SCHEDULE_TYPE_OPTIONS,
-} from '../src/constants/skincare';
+import { CATEGORIES, CATEGORY_INFO } from '../src/constants/skincare';
 import { IngredientSelector } from '../src/components/IngredientSelector';
 import { DateInput } from '../src/components/DateInput';
-import type { StepCategory, TimeOfDayUsage, DayOfWeek, ScheduleType } from '../src/types';
+import type { StepCategory } from '../src/types';
 
 export default function EditProductScreen() {
   const router = useRouter();
@@ -35,6 +28,7 @@ export default function EditProductScreen() {
   const product = products.find((p) => p.id === productId);
   const { colors } = useTheme();
   const { showToast } = useToast();
+  const { showConfirm } = useConfirm();
   const styles = createStyles(colors);
 
   const [name, setName] = useState('');
@@ -42,12 +36,6 @@ export default function EditProductScreen() {
   const [size, setSize] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [stepCategory, setStepCategory] = useState<StepCategory>('serum');
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDayUsage>('morning');
-  const [scheduleType, setScheduleType] = useState<ScheduleType>('weekly');
-  const [scheduleDays, setScheduleDays] = useState<DayOfWeek[]>([...ALL_DAYS]);
-  const [cycleLength, setCycleLength] = useState('4');
-  const [cycleDays, setCycleDays] = useState<number[]>([1]);
-  const [intervalDays, setIntervalDays] = useState('3');
   const [activeIngredients, setActiveIngredients] = useState<string[]>([]);
   const [fullIngredients, setFullIngredients] = useState('');
   const [longevityMonths, setLongevityMonths] = useState('');
@@ -57,19 +45,15 @@ export default function EditProductScreen() {
   const [startedAt, setStartedAt] = useState('');
   const [stoppedAt, setStoppedAt] = useState('');
 
+  const isFromCatalog = Boolean(product?.catalog_id);
+
   useEffect(() => {
     if (product) {
-      setName(product.name);
+      setName(product.name ?? '');
       setBrand(product.brand || '');
       setSize(product.size || '');
       setImageUrl(product.image_url || '');
-      setStepCategory(product.step_category);
-      setTimeOfDay(product.time_of_day);
-      setScheduleType(product.schedule_type || 'weekly');
-      setScheduleDays(product.schedule_days || [...ALL_DAYS]);
-      setCycleLength(String(product.schedule_cycle_length || 4));
-      setCycleDays(product.schedule_cycle_days || [1]);
-      setIntervalDays(String(product.schedule_interval_days || 3));
+      setStepCategory(product.step_category ?? 'other');
       setActiveIngredients(
         product.active_ingredients
           ? product.active_ingredients.split(',').map((i) => i.trim()).filter(Boolean)
@@ -80,126 +64,103 @@ export default function EditProductScreen() {
       setDatePurchased(product.date_purchased || '');
       setDateOpened(product.date_opened || '');
       setNotes(product.notes || '');
-      setStartedAt(product.started_at);
+      setStartedAt(product.started_at ?? '');
       setStoppedAt(product.stopped_at || '');
     }
   }, [product]);
 
-  const toggleDay = (day: DayOfWeek) => {
-    setScheduleDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
-    );
-  };
-
-  const toggleCycleDay = (day: number) => {
-    setCycleDays((prev) =>
-      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b),
-    );
-  };
-
-  const handleCycleLengthChange = (val: string) => {
-    setCycleLength(val);
-    const num = parseInt(val, 10);
-    if (num > 0) {
-      setCycleDays((prev) => prev.filter((d) => d <= num));
-    }
-  };
-
-  const parsedCycleLength = parseInt(cycleLength, 10) || 0;
   const todayStr = new Date().toISOString().split('T')[0];
 
   const handlePickImage = () => {
-    Alert.alert('Change Photo', 'Choose a source', [
-      {
-        text: 'Camera',
-        onPress: async () => {
-          const permission = await ImagePicker.requestCameraPermissionsAsync();
-          if (!permission.granted) {
-            showToast('Permission Needed', { message: 'Camera access is required to take photos.', variant: 'warning' });
-            return;
-          }
-          const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          });
-          if (!result.canceled && result.assets[0]) {
-            setImageUrl(result.assets[0].uri);
-          }
+    showConfirm({
+      title: 'Change Photo',
+      message: 'Choose a source',
+      buttons: [
+        {
+          text: 'Camera',
+          onPress: async () => {
+            const permission = await ImagePicker.requestCameraPermissionsAsync();
+            if (!permission.granted) {
+              showToast('Permission Needed', { message: 'Camera access is required to take photos.', variant: 'warning' });
+              return;
+            }
+            const result = await ImagePicker.launchCameraAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]) {
+              setImageUrl(result.assets[0].uri);
+            }
+          },
         },
-      },
-      {
-        text: 'Gallery',
-        onPress: async () => {
-          const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-          if (!permission.granted) {
-            showToast('Permission Needed', { message: 'Gallery access is required to pick photos.', variant: 'warning' });
-            return;
-          }
-          const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'],
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 0.8,
-          });
-          if (!result.canceled && result.assets[0]) {
-            setImageUrl(result.assets[0].uri);
-          }
+        {
+          text: 'Gallery',
+          onPress: async () => {
+            const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (!permission.granted) {
+              showToast('Permission Needed', { message: 'Gallery access is required to pick photos.', variant: 'warning' });
+              return;
+            }
+            const result = await ImagePicker.launchImageLibraryAsync({
+              mediaTypes: ['images'],
+              allowsEditing: true,
+              aspect: [1, 1],
+              quality: 0.8,
+            });
+            if (!result.canceled && result.assets[0]) {
+              setImageUrl(result.assets[0].uri);
+            }
+          },
         },
-      },
-      { text: 'Cancel', style: 'cancel' },
-    ]);
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    });
   };
 
   const handleSave = async () => {
     if (!productId) return;
-    if (!name.trim()) {
+    if (!isFromCatalog && !name.trim()) {
       showToast('Missing Name', { message: 'Please enter a product name.', variant: 'warning' });
       return;
     }
 
-    await updateProduct(productId, {
-      name: name.trim(),
-      brand: brand.trim() || undefined,
-      size: size.trim() || undefined,
-      image_url: imageUrl.trim() || undefined,
-      step_category: stepCategory,
-      time_of_day: timeOfDay,
-      times_per_week: scheduleType === 'weekly' ? scheduleDays.length || 7 : scheduleType === 'interval' ? Math.round(7 / (parseInt(intervalDays, 10) || 1)) : 7,
-      schedule_type: scheduleType,
-      schedule_days: scheduleType === 'weekly' ? scheduleDays : undefined,
-      schedule_cycle_length: scheduleType === 'cycle' ? parseInt(cycleLength, 10) : undefined,
-      schedule_cycle_days: scheduleType === 'cycle' ? cycleDays : undefined,
-      schedule_cycle_start_date: scheduleType === 'cycle' ? (product?.schedule_cycle_start_date || todayStr) : undefined,
-      schedule_interval_days: scheduleType === 'interval' ? parseInt(intervalDays, 10) : undefined,
-      schedule_interval_start_date: scheduleType === 'interval' ? (product?.schedule_interval_start_date || todayStr) : undefined,
-      active_ingredients: activeIngredients.length > 0 ? activeIngredients.join(', ') : undefined,
-      full_ingredients: fullIngredients.trim() || undefined,
+    const updates: Parameters<typeof updateProduct>[1] = {
       longevity_months: longevityMonths ? parseInt(longevityMonths, 10) || undefined : undefined,
       date_purchased: datePurchased.trim() || undefined,
       date_opened: dateOpened.trim() || undefined,
       notes: notes.trim() || undefined,
       started_at: startedAt,
       stopped_at: stoppedAt.trim() || undefined,
-    });
-
+    };
+    if (!isFromCatalog) {
+      updates.name = name.trim();
+      updates.brand = brand.trim() || undefined;
+      updates.image_url = imageUrl.trim() || undefined;
+      updates.step_category = stepCategory;
+    }
+    await updateProduct(productId, updates);
     router.back();
   };
 
   const handleDelete = () => {
     if (!productId) return;
-    Alert.alert('Delete Product', `Permanently remove "${name}"?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await deleteProduct(productId);
-          router.back();
+    showConfirm({
+      title: 'Delete Product',
+      message: `Permanently remove "${name}"?`,
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await deleteProduct(productId);
+            router.back();
+          },
         },
-      },
-    ]);
+      ],
+    });
   };
 
   // Compute expiry info
@@ -262,10 +223,22 @@ export default function EditProductScreen() {
       {/* ── Core Fields ──────────────────────────────────────── */}
 
       <Text style={styles.label}>PRODUCT NAME</Text>
-      <TextInput style={styles.input} value={name} onChangeText={setName} placeholderTextColor={colors.textLight} />
+      <TextInput
+        style={styles.input}
+        value={name}
+        onChangeText={setName}
+        placeholderTextColor={colors.textLight}
+        editable={!isFromCatalog}
+      />
 
       <Text style={styles.label}>BRAND</Text>
-      <TextInput style={styles.input} value={brand} onChangeText={setBrand} placeholderTextColor={colors.textLight} />
+      <TextInput
+        style={styles.input}
+        value={brand}
+        onChangeText={setBrand}
+        placeholderTextColor={colors.textLight}
+        editable={!isFromCatalog}
+      />
 
       <Text style={styles.label}>SIZE</Text>
       <TextInput
@@ -274,12 +247,10 @@ export default function EditProductScreen() {
         onChangeText={setSize}
         placeholder="e.g., 100ml, 50g, 1.7 oz"
         placeholderTextColor={colors.textLight}
+        editable={!isFromCatalog}
       />
 
-      {/* ── Routine Placement ────────────────────────────────── */}
-
-      <Text style={styles.sectionTitle}>Routine Placement</Text>
-
+      <Text style={styles.sectionTitle}>Step category</Text>
       <Text style={styles.label}>STEP CATEGORY</Text>
       <View style={styles.chipGrid}>
         {CATEGORIES.map((cat) => {
@@ -289,7 +260,8 @@ export default function EditProductScreen() {
             <TouchableOpacity
               key={cat}
               style={[styles.chip, selected && styles.chipSelected]}
-              onPress={() => setStepCategory(cat)}
+              onPress={() => !isFromCatalog && setStepCategory(cat)}
+              disabled={isFromCatalog}
             >
               <Ionicons name={info.icon as any} size={14} color={selected ? colors.textOnPrimary : colors.textSecondary} />
               <Text style={[styles.chipText, selected && styles.chipTextSelected]}>{info.label}</Text>
@@ -298,137 +270,6 @@ export default function EditProductScreen() {
         })}
       </View>
 
-      <Text style={styles.label}>WHEN TO USE</Text>
-      <View style={styles.pillRow}>
-        {TIME_OF_DAY_USAGE_OPTIONS.map((option) => {
-          const selected = timeOfDay === option.key;
-          return (
-            <TouchableOpacity key={option.key} style={[styles.pill, selected && styles.pillSelected]} onPress={() => setTimeOfDay(option.key)}>
-              <Ionicons name={option.icon as any} size={16} color={selected ? colors.textOnPrimary : colors.textSecondary} />
-              <Text style={[styles.pillText, selected && styles.pillTextSelected]}>{option.label}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      <Text style={styles.label}>SCHEDULE</Text>
-      <View style={styles.scheduleTypeRow}>
-        {SCHEDULE_TYPE_OPTIONS.map((option) => {
-          const selected = scheduleType === option.key;
-          return (
-            <TouchableOpacity
-              key={option.key}
-              style={[styles.scheduleTypeBtn, selected && styles.scheduleTypeBtnSelected]}
-              onPress={() => setScheduleType(option.key)}
-              activeOpacity={0.7}
-            >
-              <Ionicons
-                name={option.icon as any}
-                size={16}
-                color={selected ? colors.textOnPrimary : colors.textSecondary}
-              />
-              <Text style={[styles.scheduleTypeText, selected && styles.scheduleTypeTextSelected]}>
-                {option.label}
-              </Text>
-              <Text style={[styles.scheduleTypeDesc, selected && styles.scheduleTypeDescSelected]}>
-                {option.description}
-              </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-
-      {scheduleType === 'weekly' && (
-        <>
-          <Text style={styles.label}>DAYS OF THE WEEK</Text>
-          <View style={styles.daysRow}>
-            {DAYS_OF_WEEK.map((day) => {
-              const selected = scheduleDays.includes(day.key);
-              return (
-                <TouchableOpacity
-                  key={day.key}
-                  style={[styles.dayCircle, selected && styles.dayCircleSelected]}
-                  onPress={() => toggleDay(day.key)}
-                >
-                  <Text style={[styles.dayText, selected && styles.dayTextSelected]}>
-                    {day.short}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <TouchableOpacity
-            style={styles.selectAll}
-            onPress={() => setScheduleDays(scheduleDays.length === ALL_DAYS.length ? [] : [...ALL_DAYS])}
-          >
-            <Text style={styles.selectAllText}>
-              {scheduleDays.length === ALL_DAYS.length ? 'Deselect All' : 'Select All'}
-            </Text>
-          </TouchableOpacity>
-        </>
-      )}
-
-      {scheduleType === 'cycle' && (
-        <>
-          <Text style={styles.label}>CYCLE LENGTH (DAYS)</Text>
-          <TextInput
-            style={styles.input}
-            value={cycleLength}
-            onChangeText={handleCycleLengthChange}
-            placeholder="e.g., 4"
-            placeholderTextColor={colors.textLight}
-            keyboardType="number-pad"
-          />
-          {parsedCycleLength >= 2 && (
-            <>
-              <Text style={styles.label}>ACTIVE ON WHICH DAYS?</Text>
-              <View style={styles.cycleDaysRow}>
-                {Array.from({ length: parsedCycleLength }, (_, i) => i + 1).map((day) => {
-                  const selected = cycleDays.includes(day);
-                  return (
-                    <TouchableOpacity
-                      key={day}
-                      style={[styles.cycleDayBtn, selected && styles.cycleDayBtnSelected]}
-                      onPress={() => toggleCycleDay(day)}
-                    >
-                      <Text style={[styles.cycleDayNum, selected && styles.cycleDayNumSelected]}>
-                        {day}
-                      </Text>
-                      <Text style={[styles.cycleDayLabel, selected && styles.cycleDayLabelSelected]}>
-                        Day {day}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-              <Text style={styles.scheduleHint}>
-                Cycle repeats every {parsedCycleLength} days.
-              </Text>
-            </>
-          )}
-        </>
-      )}
-
-      {scheduleType === 'interval' && (
-        <>
-          <Text style={styles.label}>REPEAT EVERY</Text>
-          <View style={styles.intervalRow}>
-            <TextInput
-              style={[styles.input, styles.intervalInput]}
-              value={intervalDays}
-              onChangeText={setIntervalDays}
-              placeholder="3"
-              placeholderTextColor={colors.textLight}
-              keyboardType="number-pad"
-            />
-            <Text style={styles.intervalUnit}>days</Text>
-          </View>
-          <Text style={styles.scheduleHint}>
-            Every {parseInt(intervalDays, 10) || '…'} days from the start date.
-          </Text>
-        </>
-      )}
-
       {/* ── Ingredients ──────────────────────────────────────── */}
 
       <Text style={styles.sectionTitle}>Ingredients</Text>
@@ -436,7 +277,7 @@ export default function EditProductScreen() {
       <Text style={styles.label}>ACTIVE / KEY INGREDIENTS</Text>
       <IngredientSelector
         selectedIngredients={activeIngredients}
-        onSelectionChange={setActiveIngredients}
+        onSelectionChange={isFromCatalog ? () => {} : setActiveIngredients}
       />
 
       <Text style={styles.label}>FULL INGREDIENTS LIST</Text>
@@ -448,6 +289,7 @@ export default function EditProductScreen() {
         placeholderTextColor={colors.textLight}
         multiline={true}
         numberOfLines={4}
+        editable={!isFromCatalog}
       />
 
       {/* ── Longevity & Dates ────────────────────────────────── */}

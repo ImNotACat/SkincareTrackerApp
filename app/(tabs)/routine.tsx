@@ -4,15 +4,14 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import DragList, { DragListRenderItemInfo } from 'react-native-draglist';
 import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { useRoutine } from '../../src/hooks/useRoutine';
+import { useConfirm } from '../../src/contexts/ConfirmContext';
 import { CATEGORY_INFO } from '../../src/constants/skincare';
 import { SectionHeader } from '../../src/components/SectionHeader';
 import { EmptyState } from '../../src/components/EmptyState';
@@ -45,42 +44,40 @@ export default function RoutineScreen() {
   const router = useRouter();
   const { colors } = useTheme();
   const styles = createStyles(colors);
-  const { steps, deleteStep, reorderSteps, reload } = useRoutine();
+  const { steps, deleteStep, reorderSteps } = useRoutine();
+  const { showConfirm } = useConfirm();
   const [activeTab, setActiveTab] = useState<TimeOfDay>('morning');
-
-  // Reload routine data when screen gains focus (e.g., after adding/editing steps)
-  useFocusEffect(
-    useCallback(() => {
-      reload();
-    }, [reload])
-  );
 
   const filteredSteps = useMemo(
     () =>
       steps
-        .filter((s) => s.time_of_day === activeTab)
+        .filter((s) => s.time_of_day === activeTab || s.time_of_day === 'both')
         .sort((a, b) => a.order - b.order),
     [steps, activeTab],
   );
 
-  async function onReordered(fromIndex: number, toIndex: number) {
-    const copy = [...filteredSteps];
-    const [removed] = copy.splice(fromIndex, 1);
-    copy.splice(toIndex, 0, removed);
-    const reorderedFiltered = copy.map((s, i) => ({ ...s, order: i }));
-    const otherSteps = steps.filter((s) => s.time_of_day !== activeTab);
-    await reorderSteps([...otherSteps, ...reorderedFiltered]);
-  }
+  const onReordered = useCallback(
+    async (fromIndex: number, toIndex: number) => {
+      const copy = [...filteredSteps];
+      const [removed] = copy.splice(fromIndex, 1);
+      if (!removed) return;
+      copy.splice(Math.min(toIndex, copy.length), 0, removed);
+      const reorderedFiltered = copy.map((s, i) => ({ ...s, order: i }));
+      const otherSteps = steps.filter((s) => s.time_of_day !== activeTab && s.time_of_day !== 'both');
+      await reorderSteps([...otherSteps, ...reorderedFiltered]);
+    },
+    [filteredSteps, steps, activeTab, reorderSteps],
+  );
 
   const handleDelete = (step: RoutineStep) => {
-    Alert.alert('Delete Step', `Remove "${step.name}" from your routine?`, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteStep(step.id),
-      },
-    ]);
+    showConfirm({
+      title: 'Delete Step',
+      message: `Remove "${step.name}" from your routine?`,
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: () => deleteStep(step.id) },
+      ],
+    });
   };
 
   const handleEdit = (step: RoutineStep) => {
@@ -97,38 +94,42 @@ export default function RoutineScreen() {
     const scheduleLabel = getScheduleLabel(item);
 
     return (
-      <TouchableOpacity
-        style={[styles.stepRow, isActive && styles.stepRowDragging]}
-        onPress={() => handleEdit(item)}
-        activeOpacity={0.7}
-      >
+      <View style={[styles.stepRow, isActive && styles.stepRowDragging]}>
         <TouchableOpacity
           onPressIn={onDragStart}
           onPressOut={onDragEnd}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={styles.dragHandle}
+          activeOpacity={1}
         >
           <Ionicons name="reorder-three-outline" size={22} color={colors.textLight} />
         </TouchableOpacity>
-        <View style={[styles.categoryIcon, { backgroundColor: category.color + '18' }]}>
-          <Ionicons name={category.icon as any} size={18} color={category.color} />
-        </View>
-        <View style={styles.stepInfo}>
-          <Text style={styles.stepName} numberOfLines={1}>
-            {item.name}
-          </Text>
-          <Text style={styles.stepMeta}>
-            {category.label}  ·  {scheduleLabel}
-          </Text>
-        </View>
+        <TouchableOpacity
+          style={styles.stepContentTouchable}
+          onPress={() => handleEdit(item)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.categoryIcon, { backgroundColor: category.color + '18' }]}>
+            <Ionicons name={category.icon as any} size={18} color={category.color} />
+          </View>
+          <View style={styles.stepInfo}>
+            <Text style={styles.stepName} numberOfLines={1}>
+              {item.name}
+            </Text>
+            <Text style={styles.stepMeta}>
+              {category.label}  ·  {scheduleLabel}
+            </Text>
+          </View>
+        </TouchableOpacity>
         <TouchableOpacity
           onPress={() => handleDelete(item)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={styles.deleteButton}
+          activeOpacity={0.7}
         >
           <Ionicons name="close" size={16} color={colors.textLight} />
         </TouchableOpacity>
-      </TouchableOpacity>
+      </View>
     );
   }
 
@@ -253,6 +254,12 @@ const createStyles = (colors: any) => StyleSheet.create({
     marginBottom: Spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  stepContentTouchable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
   },
   stepRowDragging: {
     shadowColor: colors.primaryDark,

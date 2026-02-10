@@ -1,11 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '../lib/supabase';
+import { Tables } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { detectConflicts, detectConflictsForProduct } from '../lib/ingredient-conflicts';
-import { isProductActiveOnDate } from '../hooks/useProducts';
-import type { Product, CatalogProduct, ScheduleType } from '../types';
+import type { Product, ProductWithCatalog, CatalogProduct, RoutineStep } from '../types';
 import type { DetectedConflict } from '../lib/ingredient-conflicts';
+import { isStepActiveOnDate } from '../lib/routine-utils';
 
 // ─── Storage Key ────────────────────────────────────────────────────────────
 
@@ -17,25 +18,91 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
+function mergeProductWithCatalog(p: Product, catalog: CatalogProduct | null): ProductWithCatalog {
+  if (p.catalog_id && catalog) {
+    return {
+      ...p,
+      name: catalog.name,
+      brand: catalog.brand,
+      image_url: catalog.image_url,
+      step_category: catalog.step_category,
+      active_ingredients: catalog.active_ingredients,
+      full_ingredients: catalog.full_ingredients,
+      size: catalog.size,
+      source_url: catalog.source_url,
+    };
+  }
+  return {
+    ...p,
+    name: p.name ?? '',
+    brand: p.brand,
+    image_url: p.image_url,
+    step_category: (p.step_category ?? 'other') as import('../types').StepCategory,
+    active_ingredients: undefined,
+    full_ingredients: undefined,
+    size: undefined,
+    source_url: undefined,
+  };
+}
+
+const ALL_DAYS = ['monday','tuesday','wednesday','thursday','friday','saturday','sunday'] as const;
+
+function mapRowToStep(row: Record<string, unknown>): RoutineStep {
+  return {
+    id: String(row.id),
+    user_id: String(row.user_id),
+    product_id: row.product_id != null ? String(row.product_id) : undefined,
+    name: String(row.name),
+    product_name: row.product_name != null ? String(row.product_name) : undefined,
+    category: row.category as RoutineStep['category'],
+    time_of_day: row.time_of_day as RoutineStep['time_of_day'],
+    order: Number(row.order),
+    notes: row.notes != null ? String(row.notes) : undefined,
+    schedule_type: ((row.schedule_type as RoutineStep['schedule_type']) || 'weekly'),
+    days: Array.isArray(row.days) ? (row.days as RoutineStep['days']) : [...ALL_DAYS],
+    cycle_length: row.cycle_length != null ? Number(row.cycle_length) : undefined,
+    cycle_days: Array.isArray(row.cycle_days) ? (row.cycle_days as number[]) : undefined,
+    cycle_start_date: row.cycle_start_date != null ? String(row.cycle_start_date) : undefined,
+    interval_days: row.interval_days != null ? Number(row.interval_days) : undefined,
+    interval_start_date: row.interval_start_date != null ? String(row.interval_start_date) : undefined,
+    created_at: new Date(row.created_at as string).toISOString(),
+    updated_at: new Date(row.updated_at as string).toISOString(),
+  };
+}
+
 // ─── Context Types ──────────────────────────────────────────────────────────
 
+/** Payload when adding a product: catalog link or custom overrides + user fields. */
+export type AddProductPayload = {
+  catalog_id?: string;
+  name?: string;
+  brand?: string;
+  image_url?: string;
+  step_category?: import('../types').StepCategory;
+  size?: string;
+  source_url?: string;
+  active_ingredients?: string;
+  full_ingredients?: string;
+  started_at: string;
+  date_opened?: string;
+  date_purchased?: string;
+  longevity_months?: number;
+  notes?: string;
+};
+
 export interface ProductsContextValue {
-  products: Product[];
-  activeProducts: Product[];
-  inactiveProducts: Product[];
+  products: ProductWithCatalog[];
+  activeProducts: ProductWithCatalog[];
+  inactiveProducts: ProductWithCatalog[];
   isLoading: boolean;
-  addProduct: (
-    product: Omit<Product, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
-  ) => Promise<Product>;
-  addProductFromCatalog: (
-    catalogProduct: CatalogProduct,
-  ) => Promise<Product>;
+  addProduct: (product: AddProductPayload, existingCatalogId?: string) => Promise<ProductWithCatalog>;
+  addProductFromCatalog: (catalogProduct: CatalogProduct) => Promise<ProductWithCatalog>;
   updateProduct: (id: string, updates: Partial<Product>) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
   stopProduct: (id: string) => Promise<void>;
   restartProduct: (id: string) => Promise<void>;
-  getProductById: (id: string) => Product | undefined;
-  getProductsForDate: (dateStr: string) => Product[];
+  getProductById: (id: string) => ProductWithCatalog | undefined;
+  getProductsForDate: (dateStr: string) => ProductWithCatalog[];
   isProductInMyList: (catalogId: string) => boolean;
   allConflicts: DetectedConflict[];
   getConflictsForProduct: (productId: string) => DetectedConflict[];
@@ -49,6 +116,8 @@ const ProductsContext = createContext<ProductsContextValue | undefined>(undefine
 export function ProductsProvider({ children }: { children: React.ReactNode }) {
   const { user, isLoading: authLoading } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [catalog, setCatalog] = useState<Map<string, CatalogProduct>>(new Map());
+  const [routineSteps, setRoutineSteps] = useState<RoutineStep[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const isGuest = !user || user.id === 'guest';
@@ -58,56 +127,63 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
   const loadFromAsyncStorage = useCallback(async () => {
     const json = await AsyncStorage.getItem(STORAGE_KEY);
     if (json) {
-      const parsed: Product[] = JSON.parse(json);
-      // Migrate old schedule naming
-      const migrated = parsed.map((p) => {
-        const st = p.schedule_type as any;
-        if (st === 'regular') {
-          return {
-            ...p,
-            schedule_type: 'interval' as ScheduleType,
-            schedule_interval_start_date: (p as any).schedule_start_date,
-          };
-        }
-        if (st === 'rota') {
-          return {
-            ...p,
-            schedule_type: 'cycle' as ScheduleType,
-            schedule_cycle_length: (p as any).schedule_rota_length,
-            schedule_cycle_days: (p as any).schedule_rota_days,
-            schedule_cycle_start_date: (p as any).schedule_rota_start_date,
-          };
-        }
-        return p;
-      });
-      setProducts(migrated);
+      try {
+        const parsed: Product[] = JSON.parse(json);
+        setProducts(parsed);
+      } catch {
+        // ignore invalid cache
+      }
     }
   }, []);
 
-  // ── Load products ─────────────────────────────────────────────────────
+  // ── Load products, catalog, and routine steps ─────────────────────────
 
   const loadData = useCallback(async () => {
     try {
       if (!isGuest && user) {
-        // Authenticated user → load from Supabase
-        const { data, error } = await supabase
+        const { data: productsData, error: productsError } = await supabase
           .from('products')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 
-        if (error) {
-          console.error('Failed to load products from Supabase:', error);
-          // Fallback to local cache
+        if (productsError) {
+          console.error('Failed to load products from Supabase:', productsError);
           await loadFromAsyncStorage();
+          setCatalog(new Map());
+          setRoutineSteps([]);
         } else {
-          setProducts(data || []);
-          // Cache locally for offline access
-          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(data || []));
+          const rawProducts = (productsData || []) as Product[];
+          setProducts(rawProducts);
+
+          const catalogIds = [...new Set(rawProducts.map((p) => p.catalog_id).filter(Boolean) as string[])];
+          if (catalogIds.length > 0) {
+            const { data: catalogData } = await supabase
+              .from('product_catalog')
+              .select('*')
+              .in('id', catalogIds);
+            const catalogMap = new Map<string, CatalogProduct>();
+            (catalogData || []).forEach((row) => {
+              catalogMap.set(row.id, row as unknown as CatalogProduct);
+            });
+            setCatalog(catalogMap);
+          } else {
+            setCatalog(new Map());
+          }
+
+          const { data: stepsData } = await supabase
+            .from('routine_steps')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('order', { ascending: true });
+          setRoutineSteps((stepsData || []).map((row) => mapRowToStep(row as unknown as Record<string, unknown>)));
+
+          await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(rawProducts));
         }
       } else {
-        // Guest → local only
         await loadFromAsyncStorage();
+        setCatalog(new Map());
+        setRoutineSteps([]);
       }
     } catch (error) {
       console.error('Failed to load products:', error);
@@ -128,57 +204,70 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
   }, []);
 
-  // ── Derived Lists ─────────────────────────────────────────────────────
+  // ── Merged display list (product + catalog) ─────────────────────────────
+
+  const productsWithCatalog = useMemo(() => {
+    return products.map((p) => mergeProductWithCatalog(p, p.catalog_id ? catalog.get(p.catalog_id) ?? null : null));
+  }, [products, catalog]);
 
   const activeProducts = useMemo(
     () =>
-      products
+      productsWithCatalog
         .filter((p) => !p.stopped_at)
         .sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()),
-    [products],
+    [productsWithCatalog],
   );
 
   const inactiveProducts = useMemo(
     () =>
-      products
+      productsWithCatalog
         .filter((p) => !!p.stopped_at)
         .sort((a, b) => new Date(b.stopped_at!).getTime() - new Date(a.stopped_at!).getTime()),
-    [products],
+    [productsWithCatalog],
   );
 
-  // ── Schedule-Aware Queries ────────────────────────────────────────────
+  // ── Products for date (from routine steps) ─────────────────────────────
 
   const getProductsForDate = useCallback(
-    (dateStr: string): Product[] => {
-      return activeProducts.filter((p) => isProductActiveOnDate(p, dateStr));
+    (dateStr: string): ProductWithCatalog[] => {
+      const productIds = new Set<string>();
+      routineSteps.forEach((step) => {
+        if (step.product_id && isStepActiveOnDate(step, dateStr)) {
+          productIds.add(step.product_id);
+        }
+      });
+      return activeProducts.filter((p) => productIds.has(p.id));
     },
-    [activeProducts],
+    [activeProducts, routineSteps],
   );
 
   // ── CRUD ──────────────────────────────────────────────────────────────
 
-  // ── Push to shared catalog (fire-and-forget for non-guest users) ─────────
-
+  /** Push catalog-shaped data to product_catalog; returns catalog id or null. */
   const pushToCatalog = useCallback(
-    async (product: Omit<Product, 'id' | 'user_id' | 'created_at' | 'updated_at'>): Promise<string | null> => {
+    async (payload: {
+      name: string;
+      brand?: string;
+      size?: string;
+      image_url?: string;
+      source_url?: string;
+      step_category: import('../types').StepCategory;
+      active_ingredients?: string;
+      full_ingredients?: string;
+    }): Promise<string | null> => {
       if (isGuest || !user) return null;
       try {
-        // Check for existing match (name + brand)
         let query = supabase
           .from('product_catalog')
           .select('id, times_added')
-          .ilike('name', product.name.trim());
-
-        if (product.brand) {
-          query = query.ilike('brand', product.brand.trim());
+          .ilike('name', payload.name.trim());
+        if (payload.brand) {
+          query = query.ilike('brand', payload.brand.trim());
         } else {
           query = query.is('brand', null);
         }
-
         const { data: existing } = await query.limit(1);
-
         if (existing && existing.length > 0) {
-          // Already in catalog — bump counter
           const catalogEntry = existing[0];
           await supabase
             .from('product_catalog')
@@ -189,25 +278,22 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
             .eq('id', catalogEntry.id);
           return catalogEntry.id;
         }
-
-        // Insert new catalog entry
         const { data, error } = await supabase
           .from('product_catalog')
           .insert({
-            name: product.name.trim(),
-            brand: product.brand?.trim() || null,
-            size: product.size?.trim() || null,
-            image_url: product.image_url || null,
-            source_url: product.source_url || null,
-            step_category: product.step_category,
-            active_ingredients: product.active_ingredients || null,
-            full_ingredients: product.full_ingredients || null,
+            name: payload.name.trim(),
+            brand: payload.brand?.trim() || null,
+            size: payload.size?.trim() || null,
+            image_url: payload.image_url || null,
+            source_url: payload.source_url || null,
+            step_category: payload.step_category,
+            active_ingredients: payload.active_ingredients || null,
+            full_ingredients: payload.full_ingredients || null,
             created_by: user.id,
             times_added: 1,
           })
           .select('id')
           .single();
-
         if (error) {
           console.error('Failed to push to catalog:', error);
           return null;
@@ -222,21 +308,81 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const addProduct = useCallback(
-    async (
-      product: Omit<Product, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
-    ): Promise<Product> => {
-      if (!isGuest && user) {
-        // Also push to the shared catalog
-        const catalogId = await pushToCatalog(product);
+    async (payload: AddProductPayload, existingCatalogId?: string): Promise<ProductWithCatalog> => {
+      const today = new Date().toISOString().split('T')[0];
+      let catalogId = payload.catalog_id ?? existingCatalogId ?? null;
 
-        // Supabase insert (id, created_at, updated_at default on the server)
+      if (!isGuest && user) {
+        if (catalogId) {
+          supabase
+            .from('product_catalog')
+            .select('times_added')
+            .eq('id', catalogId)
+            .single()
+            .then(({ data }) => {
+              if (data) {
+                supabase
+                  .from('product_catalog')
+                  .update({
+                    times_added: data.times_added + 1,
+                    updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', catalogId!)
+                  .then(() => {});
+              }
+            });
+        } else if (payload.name) {
+          catalogId = await pushToCatalog({
+            name: payload.name,
+            brand: payload.brand,
+            size: payload.size,
+            image_url: payload.image_url,
+            source_url: payload.source_url,
+            step_category: payload.step_category ?? 'other',
+            active_ingredients: payload.active_ingredients,
+            full_ingredients: payload.full_ingredients,
+          });
+          if (catalogId) {
+            setCatalog((prev) => {
+              const next = new Map(prev);
+              next.set(catalogId!, {
+                id: catalogId!,
+                name: payload.name!,
+                brand: payload.brand,
+                size: payload.size,
+                image_url: payload.image_url,
+                source_url: payload.source_url,
+                step_category: payload.step_category ?? 'other',
+                active_ingredients: payload.active_ingredients,
+                full_ingredients: payload.full_ingredients,
+                times_added: 1,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              });
+              return next;
+            });
+          }
+        }
+
+        const insertRow: Record<string, unknown> = {
+          user_id: user.id,
+          catalog_id: catalogId || null,
+          started_at: payload.started_at || today,
+          date_opened: payload.date_opened || null,
+          date_purchased: payload.date_purchased || null,
+          longevity_months: payload.longevity_months ?? null,
+          notes: payload.notes || null,
+        };
+        if (!catalogId && payload.name) {
+          insertRow.name = payload.name;
+          insertRow.brand = payload.brand ?? null;
+          insertRow.image_url = payload.image_url ?? null;
+          insertRow.step_category = payload.step_category ?? 'other';
+        }
+
         const { data, error } = await supabase
           .from('products')
-          .insert({
-            ...product,
-            user_id: user.id,
-            catalog_id: catalogId || undefined,
-          })
+          .insert(insertRow)
           .select()
           .single();
 
@@ -245,62 +391,73 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
           throw error;
         }
 
-        const updated = [data as Product, ...products];
+        const newProduct = data as Product;
+        const updated = [newProduct, ...products];
         setProducts(updated);
         await cacheProducts(updated);
-        return data as Product;
+        const catalogEntry = catalogId ? catalog.get(catalogId) ?? (payload.name ? {
+          id: catalogId,
+          name: payload.name,
+          brand: payload.brand,
+          size: payload.size,
+          image_url: payload.image_url,
+          source_url: payload.source_url,
+          step_category: (payload.step_category ?? 'other') as import('../types').StepCategory,
+          active_ingredients: payload.active_ingredients,
+          full_ingredients: payload.full_ingredients,
+          times_added: 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        } as CatalogProduct : null) : null;
+        return mergeProductWithCatalog(newProduct, catalogEntry);
       } else {
-        // Guest: local only
         const now = new Date().toISOString();
         const newProduct: Product = {
-          ...product,
           id: generateId(),
-          user_id: 'local',
+          user_id: 'guest',
+          catalog_id: catalogId ?? undefined,
+          name: payload.name,
+          brand: payload.brand,
+          image_url: payload.image_url,
+          step_category: payload.step_category,
+          started_at: payload.started_at || today,
+          date_opened: payload.date_opened,
+          date_purchased: payload.date_purchased,
+          longevity_months: payload.longevity_months,
+          notes: payload.notes,
           created_at: now,
           updated_at: now,
         };
         const updated = [newProduct, ...products];
         setProducts(updated);
         await cacheProducts(updated);
-        return newProduct;
+        return mergeProductWithCatalog(newProduct, null);
       }
     },
-    [products, user, isGuest, cacheProducts, pushToCatalog],
+    [products, catalog, user, isGuest, cacheProducts, pushToCatalog],
   );
 
   /** Add a product from the shared catalog to the user's personal list. */
   const addProductFromCatalog = useCallback(
-    async (catalogProduct: CatalogProduct): Promise<Product> => {
+    async (catalogProduct: CatalogProduct): Promise<ProductWithCatalog> => {
       const today = new Date().toISOString().split('T')[0];
 
-      const productData = {
-        name: catalogProduct.name,
-        brand: catalogProduct.brand || undefined,
-        size: catalogProduct.size || undefined,
-        image_url: catalogProduct.image_url || undefined,
-        source_url: catalogProduct.source_url || undefined,
-        step_category: catalogProduct.step_category,
-        active_ingredients: catalogProduct.active_ingredients || undefined,
-        full_ingredients: catalogProduct.full_ingredients || undefined,
-        time_of_day: 'both' as const,
-        times_per_week: 7,
-        started_at: today,
-        catalog_id: catalogProduct.id,
-      };
-
       if (!isGuest && user) {
-        // Bump the catalog counter
         await supabase
           .from('product_catalog')
           .update({
-            times_added: catalogProduct.times_added + 1,
+            times_added: (catalogProduct.times_added ?? 0) + 1,
             updated_at: new Date().toISOString(),
           })
           .eq('id', catalogProduct.id);
 
         const { data, error } = await supabase
           .from('products')
-          .insert({ ...productData, user_id: user.id })
+          .insert({
+            user_id: user.id,
+            catalog_id: catalogProduct.id,
+            started_at: today,
+          })
           .select()
           .single();
 
@@ -309,36 +466,52 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
           throw error;
         }
 
-        const updated = [data as Product, ...products];
+        const newProduct = data as Product;
+        const updated = [newProduct, ...products];
         setProducts(updated);
         await cacheProducts(updated);
-        return data as Product;
+        setCatalog((prev) => {
+          const next = new Map(prev);
+          next.set(catalogProduct.id, catalogProduct);
+          return next;
+        });
+        return mergeProductWithCatalog(newProduct, catalogProduct);
       } else {
         const now = new Date().toISOString();
         const newProduct: Product = {
-          ...productData,
           id: generateId(),
-          user_id: 'local',
+          user_id: 'guest',
+          catalog_id: catalogProduct.id,
+          started_at: today,
           created_at: now,
           updated_at: now,
         };
         const updated = [newProduct, ...products];
         setProducts(updated);
         await cacheProducts(updated);
-        return newProduct;
+        return mergeProductWithCatalog(newProduct, catalogProduct);
       }
     },
     [products, user, isGuest, cacheProducts],
   );
 
+  const allowedProductUpdateKeys: (keyof Product)[] = [
+    'longevity_months', 'date_purchased', 'date_opened', 'notes',
+    'started_at', 'stopped_at', 'name', 'brand', 'image_url', 'step_category',
+  ];
+
   const updateProduct = useCallback(
     async (id: string, updates: Partial<Product>) => {
+      const filtered: Partial<Product> = {};
+      allowedProductUpdateKeys.forEach((k) => {
+        if (k in updates && updates[k] !== undefined) filtered[k] = updates[k];
+      });
       const now = new Date().toISOString();
 
       if (!isGuest && user) {
         const { error } = await supabase
           .from('products')
-          .update({ ...updates, updated_at: now })
+          .update({ ...filtered, updated_at: now })
           .eq('id', id)
           .eq('user_id', user.id);
 
@@ -349,7 +522,7 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       }
 
       const updated = products.map((p) =>
-        p.id === id ? { ...p, ...updates, updated_at: now } : p,
+        p.id === id ? { ...p, ...filtered, updated_at: now } : p,
       );
       setProducts(updated);
       await cacheProducts(updated);
@@ -396,8 +569,9 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const getProductById = useCallback(
-    (id: string): Product | undefined => products.find((p) => p.id === id),
-    [products],
+    (id: string): ProductWithCatalog | undefined =>
+      productsWithCatalog.find((p) => p.id === id),
+    [productsWithCatalog],
   );
 
   // ── Catalog helpers ────────────────────────────────────────────────────
@@ -409,27 +583,88 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
     [products],
   );
 
-  // ── Ingredient Conflicts ──────────────────────────────────────────────
+  // ── Ingredient Conflicts (per time window from routine steps) ───────────
 
-  const allConflicts: DetectedConflict[] = useMemo(
-    () => detectConflicts(products),
-    [products],
-  );
+  const allConflicts: DetectedConflict[] = useMemo(() => {
+    const today = new Date().toISOString().split('T')[0];
+    const stepsActiveToday = routineSteps.filter((s) => s.product_id && isStepActiveOnDate(s, today));
+    const productIds = new Set(stepsActiveToday.map((s) => s.product_id!));
+    const windowProducts = productsWithCatalog.filter((p) => productIds.has(p.id) && !p.stopped_at);
+
+    const byWindow: Record<string, ProductWithCatalog[]> = { morning: [], evening: [] };
+    const seenMorning = new Set<string>();
+    const seenEvening = new Set<string>();
+    stepsActiveToday.forEach((step) => {
+      const product = windowProducts.find((p) => p.id === step.product_id);
+      if (!product) return;
+      const tod = step.time_of_day;
+      if (tod === 'morning' && !seenMorning.has(product.id)) {
+        seenMorning.add(product.id);
+        byWindow.morning.push(product);
+      } else if (tod === 'evening' && !seenEvening.has(product.id)) {
+        seenEvening.add(product.id);
+        byWindow.evening.push(product);
+      } else if (tod === 'both') {
+        if (!seenMorning.has(product.id)) {
+          seenMorning.add(product.id);
+          byWindow.morning.push(product);
+        }
+        if (!seenEvening.has(product.id)) {
+          seenEvening.add(product.id);
+          byWindow.evening.push(product);
+        }
+      }
+    });
+    const seen = new Set<string>();
+    const combined: DetectedConflict[] = [];
+    [byWindow.morning, byWindow.evening].forEach((list) => {
+      const conflicts = detectConflicts(list);
+      conflicts.forEach((c) => {
+        const key = [c.rule.id, c.productA.id, c.productB.id].sort().join(':');
+        if (!seen.has(key)) {
+          seen.add(key);
+          combined.push(c);
+        }
+      });
+    });
+    const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+    combined.sort((a, b) => order[a.rule.severity] - order[b.rule.severity]);
+    return combined;
+  }, [routineSteps, productsWithCatalog]);
 
   const getConflictsForProduct = useCallback(
     (productId: string): DetectedConflict[] => {
-      const product = products.find((p) => p.id === productId);
+      const product = productsWithCatalog.find((p) => p.id === productId);
       if (!product) return [];
-      return detectConflictsForProduct(product, products);
+      const today = new Date().toISOString().split('T')[0];
+      const stepsWithThisProduct = routineSteps.filter(
+        (s) => s.product_id === productId && isStepActiveOnDate(s, today),
+      );
+      const timeWindows = new Set(stepsWithThisProduct.map((s) => s.time_of_day));
+      const stepsInSameWindow = routineSteps.filter(
+        (s) =>
+          s.product_id &&
+          isStepActiveOnDate(s, today) &&
+          (timeWindows.has(s.time_of_day) ||
+            timeWindows.has('both') ||
+            s.time_of_day === 'both'),
+      );
+      const idsInSameWindow = new Set(stepsInSameWindow.map((s) => s.product_id!));
+      const others = productsWithCatalog.filter(
+        (p) => idsInSameWindow.has(p.id) && p.id !== productId && !p.stopped_at,
+      );
+      return detectConflictsForProduct(product, [product, ...others]).filter(
+        (c) => c.productA.id === productId || c.productB.id === productId,
+      );
     },
-    [products],
+    [productsWithCatalog, routineSteps],
   );
 
   // ── Context Value ─────────────────────────────────────────────────────
 
   const value = useMemo<ProductsContextValue>(
     () => ({
-      products,
+      products: productsWithCatalog,
       activeProducts,
       inactiveProducts,
       isLoading,
@@ -447,7 +682,7 @@ export function ProductsProvider({ children }: { children: React.ReactNode }) {
       reload: loadData,
     }),
     [
-      products,
+      productsWithCatalog,
       activeProducts,
       inactiveProducts,
       isLoading,

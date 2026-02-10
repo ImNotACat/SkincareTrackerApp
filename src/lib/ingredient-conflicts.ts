@@ -165,8 +165,10 @@ function matchGroup(ingredientText: string, group: string[]): string | null {
 /**
  * Check whether two products' time-of-day usage overlaps.
  * Products used at the same time (or 'both') are in the same routine window.
+ * When time_of_day is missing (e.g. list is already filtered by window), treat as same window.
  */
-function timeOverlaps(a: TimeOfDayUsage, b: TimeOfDayUsage): boolean {
+function timeOverlaps(a: TimeOfDayUsage | undefined, b: TimeOfDayUsage | undefined): boolean {
+  if (a == null || b == null) return true;
   if (a === 'both' || b === 'both') return true;
   return a === b;
 }

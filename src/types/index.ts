@@ -9,7 +9,7 @@ export type DayOfWeek =
   | 'saturday'
   | 'sunday';
 
-export type TimeOfDay = 'morning' | 'evening';
+export type TimeOfDay = 'morning' | 'evening' | 'both';
 
 export type ScheduleType = 'weekly' | 'cycle' | 'interval';
 
@@ -29,6 +29,7 @@ export type StepCategory =
 export interface RoutineStep {
   id: string;
   user_id: string;
+  product_id?: string; // link to products(id) when step uses a product
   name: string;
   product_name?: string;
   category: StepCategory;
@@ -98,48 +99,40 @@ export interface CatalogProduct {
 
 export type TimeOfDayUsage = 'morning' | 'evening' | 'both';
 
+/** User's product instance. Generic data comes from catalog when catalog_id set; overrides when custom. */
 export interface Product {
   id: string;
   user_id: string;
-  catalog_id?: string; // link to shared product_catalog entry
+  catalog_id?: string;
 
-  // Core info
-  name: string;
+  // Overrides only when catalog_id is null (custom product)
+  name?: string;
   brand?: string;
-  size?: string; // e.g., "100ml", "50g", "1.7 oz"
   image_url?: string;
-  source_url?: string; // URL product was imported from
+  step_category?: StepCategory;
 
-  // Routine placement
-  step_category: StepCategory;
-  time_of_day: TimeOfDayUsage;
-  times_per_week: number; // 1-7
-
-  // Ingredients
-  active_ingredients?: string; // comma-separated key actives
-  full_ingredients?: string; // full INCI list
-
-  // Longevity & dates
-  longevity_months?: number; // PAO (period after opening) in months
-  date_purchased?: string; // YYYY-MM-DD
-  date_opened?: string; // YYYY-MM-DD
-
-  // Usage
+  // User-specific
+  longevity_months?: number;
+  date_purchased?: string;
+  date_opened?: string;
   notes?: string;
-  started_at: string; // YYYY-MM-DD — when added to routine
-  stopped_at?: string; // YYYY-MM-DD — undefined = still active
-
-  // Scheduling: supports weekly, cycle (repeating N-day rota), or interval (every X days)
-  schedule_type?: ScheduleType;
-  schedule_days?: DayOfWeek[];               // For weekly: days of week
-  schedule_cycle_length?: number;            // For cycle: total days in cycle
-  schedule_cycle_days?: number[];            // For cycle: 1-indexed active days
-  schedule_cycle_start_date?: string;        // For cycle: anchor date (YYYY-MM-DD)
-  schedule_interval_days?: number;           // For interval: every X days
-  schedule_interval_start_date?: string;     // For interval: anchor date (YYYY-MM-DD)
+  started_at: string;
+  stopped_at?: string;
 
   created_at: string;
   updated_at: string;
+}
+
+/** Product merged with catalog for display (name, brand, image, category, ingredients from catalog when catalog_id set). */
+export interface ProductWithCatalog extends Product {
+  name: string;
+  brand?: string;
+  image_url?: string;
+  step_category: StepCategory;
+  active_ingredients?: string;
+  full_ingredients?: string;
+  size?: string;
+  source_url?: string;
 }
 
 /** Data that can be auto-extracted from a product URL */
@@ -165,6 +158,7 @@ export interface JournalEntry {
   type: JournalEntryType;
   text?: string; // comment text or caption
   image_uri?: string; // local URI for now, Supabase storage URL later
+  tags?: string[]; // e.g. Breakout, Redness, Glowing — stored separately from text
   created_at: string;
 }
 
