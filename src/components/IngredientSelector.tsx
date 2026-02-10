@@ -18,22 +18,26 @@ import { INGREDIENT_SECTIONS, IngredientSection } from '../constants/skincare';
 interface IngredientSelectorProps {
   selectedIngredients: string[];
   onSelectionChange: (ingredients: string[]) => void;
+  /** When provided, use these sections (e.g. from DB). Otherwise use static INGREDIENT_SECTIONS. */
+  ingredientSections?: IngredientSection[] | null;
 }
 
 export function IngredientSelector({
   selectedIngredients,
   onSelectionChange,
+  ingredientSections,
 }: IngredientSelectorProps) {
   const { colors } = useTheme();
   const styles = createStyles(colors);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const sections = ingredientSections && ingredientSections.length > 0 ? ingredientSections : INGREDIENT_SECTIONS;
 
   const filteredSections = useMemo(() => {
-    if (!searchQuery.trim()) return INGREDIENT_SECTIONS;
+    if (!searchQuery.trim()) return sections;
     const query = searchQuery.toLowerCase();
     const result: IngredientSection[] = [];
-    for (const section of INGREDIENT_SECTIONS) {
+    for (const section of sections) {
       const filtered = section.data.filter((item) =>
         item.toLowerCase().includes(query),
       );
@@ -42,7 +46,7 @@ export function IngredientSelector({
       }
     }
     return result;
-  }, [searchQuery]);
+  }, [searchQuery, sections]);
 
   const handleToggleIngredient = (ingredient: string) => {
     if (selectedIngredients.includes(ingredient)) {

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
+import { useProducts } from '../hooks/useProducts';
 import { supabase } from '../lib/supabase';
 import { Tables } from '../lib/supabase';
 import type {
@@ -91,9 +92,33 @@ const RoutineContext = createContext<RoutineContextValue | undefined>(undefined)
 
 export function RoutineProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { restartProduct, stopProduct, reload: reloadProducts } = useProducts();
   const [steps, setSteps] = useState<RoutineStep[]>([]);
   const [completedSteps, setCompletedSteps] = useState<CompletedStep[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const ensureProductActive = useCallback(
+    (productId: string | undefined) => {
+      if (!productId) return;
+      restartProduct(productId)
+        .then(() => reloadProducts())
+        .catch((e) => console.warn('restartProduct failed:', e));
+    },
+    [restartProduct, reloadProducts],
+  );
+
+  const moveToShelfIfUnused = useCallback(
+    (currentSteps: RoutineStep[], productId: string | undefined) => {
+      if (!productId) return;
+      const stillUsed = currentSteps.some((s) => s.product_id === productId);
+      if (!stillUsed) {
+        stopProduct(productId)
+          .then(() => reloadProducts())
+          .catch((e) => console.warn('stopProduct failed:', e));
+      }
+    },
+    [stopProduct, reloadProducts],
+  );
 
   const loadData = useCallback(async () => {
     try {
@@ -363,6 +388,7 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
         }
         const newStep = rowToStep(data);
         setSteps((prev) => [...prev, newStep]);
+        ensureProductActive(step.product_id ?? undefined);
         return newStep;
       }
       const newStep: RoutineStep = {
@@ -373,13 +399,21 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
         updated_at: new Date().toISOString(),
       };
       await saveSteps([...steps, newStep]);
+      ensureProductActive(step.product_id ?? undefined);
       return newStep;
     },
-    [user?.id, steps, saveSteps],
+    [user?.id, steps, saveSteps, ensureProductActive],
   );
 
   const updateStep = useCallback(
     async (id: string, updates: Partial<RoutineStep>) => {
+      const currentStep = steps.find((s) => s.id === id);
+      const previousProductId = currentStep?.product_id;
+      const newProductId =
+        updates.product_id === null || updates.product_id === undefined
+          ? undefined
+          : updates.product_id;
+
       if (user?.id) {
         const payload: Record<string, unknown> = { updated_at: new Date().toISOString() };
         if (updates.product_id !== undefined) payload.product_id = updates.product_id ?? null;
@@ -412,13 +446,24 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
           : step,
       );
       setSteps(newSteps);
+
+      if (typeof newProductId === 'string') {
+        ensureProductActive(newProductId);
+      }
+      if (previousProductId && previousProductId !== newProductId) {
+        moveToShelfIfUnused(newSteps, previousProductId);
+      }
+
       if (!user?.id) await AsyncStorage.setItem(STORAGE_KEYS.ROUTINE_STEPS, JSON.stringify(newSteps));
     },
-    [user?.id, steps],
+    [user?.id, steps, ensureProductActive, moveToShelfIfUnused],
   );
 
   const deleteStep = useCallback(
     async (id: string) => {
+      const step = steps.find((s) => s.id === id);
+      const productId = step?.product_id;
+
       if (user?.id) {
         await supabase.from(Tables.COMPLETED_STEPS).delete().eq('step_id', id).eq('user_id', user.id);
         const { error } = await supabase.from(Tables.ROUTINE_STEPS).delete().eq('id', id).eq('user_id', user.id);
@@ -427,16 +472,19 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
           throw error;
         }
       }
-      const newSteps = steps.filter((step) => step.id !== id);
+      const newSteps = steps.filter((s) => s.id !== id);
       const newCompleted = completedSteps.filter((cs) => cs.step_id !== id);
       setSteps(newSteps);
       setCompletedSteps(newCompleted);
+
+      moveToShelfIfUnused(newSteps, productId);
+
       if (!user?.id) {
         await AsyncStorage.setItem(STORAGE_KEYS.ROUTINE_STEPS, JSON.stringify(newSteps));
         await AsyncStorage.setItem(STORAGE_KEYS.COMPLETED_STEPS, JSON.stringify(newCompleted));
       }
     },
-    [user?.id, steps, completedSteps],
+    [user?.id, steps, completedSteps, moveToShelfIfUnused],
   );
 
   const reorderSteps = useCallback(

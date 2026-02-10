@@ -15,6 +15,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { useConfirm } from '../../src/contexts/ConfirmContext';
 import { useRoutine } from '../../src/hooks/useRoutine';
 import { useProducts } from '../../src/hooks/useProducts';
+import { useActiveIngredients } from '../../src/hooks/useActiveIngredients';
 import { ProgressRing } from '../../src/components/ProgressRing';
 import { EmptyState } from '../../src/components/EmptyState';
 import { ConflictWarnings } from '../../src/components/ConflictWarnings';
@@ -57,6 +58,7 @@ export default function TodayScreen() {
     reload,
   } = useRoutine();
   const { allConflicts, getProductsForDate } = useProducts();
+  const { spotlightIngredient } = useActiveIngredients();
   const { showConfirm } = useConfirm();
   const { colors } = useTheme();
   const styles = createStyles(colors);
@@ -68,7 +70,6 @@ export default function TodayScreen() {
 
   const morningSteps = useMemo(() => getTodaySteps('morning', selectedDate), [getTodaySteps, selectedDate]);
   const eveningSteps = useMemo(() => getTodaySteps('evening', selectedDate), [getTodaySteps, selectedDate]);
-  const todaysProducts = useMemo(() => getProductsForDate(selectedDate), [getProductsForDate, selectedDate]);
 
   const hasAnySteps = morningSteps.length > 0 || eveningSteps.length > 0;
 
@@ -146,50 +147,28 @@ export default function TodayScreen() {
             />
           )}
 
-          {/* ── Today's Products ─────────────────────────────────── */}
-          {todaysProducts.length > 0 && (
-            <View style={styles.productsSection}>
-              <View style={styles.productsSectionHeader}>
-                <Ionicons name="bag-outline" size={16} color={colors.primary} />
-                <Text style={styles.productsSectionTitle}>
-                  Today's Products ({todaysProducts.length})
-                </Text>
+          {/* ── Ingredient discovery ───────────────────────────────── */}
+          {spotlightIngredient && (
+            <TouchableOpacity
+              style={[styles.discoveryCard, { borderLeftColor: colors.accent }]}
+              onPress={() => router.push({ pathname: '/ingredient-detail', params: { ingredientId: spotlightIngredient.id } })}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.discoveryCardHeader, { backgroundColor: colors.accent + '18' }]}>
+                <View style={[styles.discoveryIconWrap, { backgroundColor: colors.accent + '30' }]}>
+                  <Ionicons name="flask-outline" size={20} color={colors.accent} />
+                </View>
+                <Text style={[styles.discoveryCardTitle, { color: colors.accent }]}>Ingredient discovery</Text>
               </View>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.productsScroll}
-              >
-                {todaysProducts.map((product) => {
-                  const category = CATEGORY_INFO[product.step_category];
-                  return (
-                    <TouchableOpacity
-                      key={product.id}
-                      style={styles.productChip}
-                      onPress={() => router.push({ pathname: '/product-detail', params: { productId: product.id } })}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.productChipIcon, { backgroundColor: category.color + '18' }]}>
-                        <Ionicons name={category.icon as any} size={14} color={category.color} />
-                      </View>
-                      <View style={styles.productChipText}>
-                        <Text style={styles.productChipName} numberOfLines={1}>{product.name}</Text>
-                        {product.brand ? (
-                          <Text style={styles.productChipBrand} numberOfLines={1}>{product.brand}</Text>
-                        ) : null}
-                      </View>
-                      <View style={styles.productChipTimeBadge}>
-                        <Ionicons
-                          name={product.time_of_day === 'morning' ? 'sunny-outline' : product.time_of_day === 'evening' ? 'moon-outline' : 'time-outline'}
-                          size={10}
-                          color={colors.textLight}
-                        />
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
+              <Text style={styles.discoveryIngredientName}>{spotlightIngredient.name}</Text>
+              <Text style={styles.discoverySummary} numberOfLines={2}>
+                {spotlightIngredient.description?.trim() || spotlightIngredient.benefits?.trim() || 'Learn more about this ingredient.'}
+              </Text>
+              <View style={styles.discoveryCta}>
+                <Text style={[styles.discoveryCtaText, { color: colors.accent }]}>View details</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+              </View>
+            </TouchableOpacity>
           )}
 
           {/* ── Action Cards ───────────────────────────────────── */}
@@ -769,62 +748,63 @@ const createStyles = (colors: any) => StyleSheet.create({
     fontSize: 11,
   },
 
-  // Today's Products
-  productsSection: {
-    marginTop: Spacing.lg,
-  },
-  productsSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
-  },
-  productsSectionTitle: {
-    ...Typography.label,
-    fontSize: 12,
-    color: colors.primary,
-  },
-  productsScroll: {
-    gap: Spacing.sm,
-    paddingRight: Spacing.sm,
-  },
-  productChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
+  // Ingredient discovery (distinct from routine cards: accent tint, left bar, no full border)
+  discoveryCard: {
+    marginTop: Spacing.md,
+    backgroundColor: colors.surfaceSecondary,
     borderRadius: BorderRadius.md,
-    padding: Spacing.sm + 2,
-    paddingRight: Spacing.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: Spacing.sm,
-    minWidth: 160,
-    maxWidth: 220,
+    padding: 0,
+    overflow: 'hidden',
+    borderLeftWidth: 4,
+    borderTopWidth: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
   },
-  productChipIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: BorderRadius.sm,
+  discoveryCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm + 2,
+    paddingHorizontal: Spacing.md,
+    marginBottom: 0,
+  },
+  discoveryIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  productChipText: {
-    flex: 1,
+  discoveryCardTitle: {
+    ...Typography.label,
+    fontSize: 12,
+    letterSpacing: 0.5,
   },
-  productChipName: {
-    ...Typography.body,
+  discoveryIngredientName: {
+    ...Typography.subtitle,
     color: colors.text,
+    fontSize: 18,
+    marginBottom: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingTop: 0,
+  },
+  discoverySummary: {
+    ...Typography.bodySmall,
+    color: colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+  },
+  discoveryCta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: Spacing.md,
+    paddingBottom: Spacing.md,
+  },
+  discoveryCtaText: {
+    ...Typography.label,
     fontSize: 13,
-    fontWeight: '500',
-  },
-  productChipBrand: {
-    ...Typography.caption,
-    color: colors.textLight,
-    fontSize: 10,
-    marginTop: 1,
-  },
-  productChipTimeBadge: {
-    marginLeft: 2,
   },
 
   // Action cards

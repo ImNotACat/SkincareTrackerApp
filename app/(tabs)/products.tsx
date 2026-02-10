@@ -16,6 +16,7 @@ import { useTheme } from '../../src/contexts/ThemeContext';
 import { useProducts } from '../../src/hooks/useProducts';
 import { useWishlist } from '../../src/hooks/useWishlist';
 import { useProductCatalog } from '../../src/hooks/useProductCatalog';
+import { useUnifiedProductSearch, type UnifiedProduct } from '../../src/hooks/useUnifiedProductSearch';
 import { useToast } from '../../src/components/Toast';
 import { useConfirm } from '../../src/contexts/ConfirmContext';
 import { CATEGORIES, CATEGORY_INFO } from '../../src/constants/skincare';
@@ -213,21 +214,34 @@ function MyProductsSection() {
 
 // ─── Explore Section (shared product catalog) ──────────────────────────────
 
+function getUnifiedAddId(p: UnifiedProduct): string {
+  if (p._source === 'catalog' && p._catalogId) return `catalog:${p._catalogId}`;
+  if (p._source === 'obf' && p._obfCode) return `obf:${p._obfCode}`;
+  return `${p.name}:${p.brand ?? ''}`;
+}
+
 function ExploreSection() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { addProductFromCatalog, isProductInMyList } = useProducts();
+  const { addProductFromCatalog, addProduct, isProductInMyList } = useProducts();
+  const { wishlist, addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
   const { showToast } = useToast();
   const {
-    results,
-    isSearching,
-    hasSearched,
+    results: catalogResults,
+    isSearching: isCatalogSearching,
+    hasSearched: hasCatalogSearched,
     featured,
     isFeaturedLoading,
-    search,
     loadFeatured,
     browseByCategory,
   } = useProductCatalog();
+  const {
+    results: unifiedResults,
+    isSearching: isUnifiedSearching,
+    hasSearched: hasUnifiedSearched,
+    search: unifiedSearch,
+    clearResults: clearUnifiedResults,
+  } = useUnifiedProductSearch();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<StepCategory | null>(null);
   const [addingId, setAddingId] = useState<string | null>(null);
@@ -241,19 +255,25 @@ function ExploreSection() {
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
     setSelectedCategory(null);
-    await search(searchQuery.trim());
-  }, [searchQuery, search]);
+    await unifiedSearch(searchQuery.trim());
+  }, [searchQuery, unifiedSearch]);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+    setSelectedCategory(null);
+    clearUnifiedResults();
+  }, [clearUnifiedResults]);
 
   const handleCategoryPress = useCallback(async (cat: StepCategory) => {
     if (selectedCategory === cat) {
-      // Deselect - go back to featured
       setSelectedCategory(null);
       return;
     }
     setSelectedCategory(cat);
     setSearchQuery('');
+    clearUnifiedResults();
     await browseByCategory(cat);
-  }, [selectedCategory, browseByCategory]);
+  }, [selectedCategory, browseByCategory, clearUnifiedResults]);
 
   const handleAddToMyProducts = useCallback(async (product: CatalogProduct) => {
     if (isProductInMyList(product.id)) {
@@ -271,13 +291,90 @@ function ExploreSection() {
     }
   }, [addProductFromCatalog, isProductInMyList, showToast]);
 
-  // Show search results or category results if searched, otherwise featured
-  const displayProducts = hasSearched || selectedCategory ? results : featured;
-  const showFeatured = !hasSearched && !selectedCategory;
+  const handleAddUnifiedToMyProducts = useCallback(async (product: UnifiedProduct) => {
+    const addId = getUnifiedAddId(product);
+    setAddingId(addId);
+    try {
+      if (product._source === 'catalog' && product._catalogProduct) {
+        if (isProductInMyList(product._catalogProduct.id)) {
+          showToast('Already Added', { message: `"${product.name}" is already in your products list.`, variant: 'info' });
+          return;
+        }
+        await addProductFromCatalog(product._catalogProduct);
+        showToast('Product Added', { message: `"${product.name}" has been added to your products.`, variant: 'success' });
+      } else {
+        const today = new Date().toISOString().split('T')[0];
+        await addProduct(
+          {
+            name: product.name,
+            brand: product.brand,
+            size: product.size,
+            image_url: product.image_url,
+            source_url: product.source_url,
+            step_category: product.step_category ?? 'other',
+            started_at: today,
+            active_ingredients: product.active_ingredients?.join(', '),
+            full_ingredients: product.ingredients,
+          },
+          product._catalogId,
+        );
+        showToast('Product Added', { message: `"${product.name}" has been added to your products.`, variant: 'success' });
+      }
+    } catch (error) {
+      showToast('Error', { message: 'Failed to add product. Please try again.', variant: 'error' });
+    } finally {
+      setAddingId(null);
+    }
+  }, [addProductFromCatalog, addProduct, isProductInMyList, showToast]);
+
+  const handleToggleWishlistCatalog = useCallback(
+    async (product: CatalogProduct) => {
+      const productId = product.id;
+      if (isInWishlist(productId)) {
+        const item = wishlist.find((w) => w.product_id === productId);
+        if (item) await removeFromWishlist(item.id);
+      } else {
+        await addToWishlist({
+          product_id: productId,
+          product_name: product.name,
+          brand: product.brand,
+          image_url: product.image_url,
+          source_url: product.source_url,
+        });
+      }
+    },
+    [wishlist, addToWishlist, removeFromWishlist, isInWishlist],
+  );
+
+  const handleToggleWishlistUnified = useCallback(
+    async (product: UnifiedProduct) => {
+      const productId = getUnifiedAddId(product);
+      if (isInWishlist(productId)) {
+        const item = wishlist.find((w) => w.product_id === productId);
+        if (item) await removeFromWishlist(item.id);
+      } else {
+        await addToWishlist({
+          product_id: productId,
+          product_name: product.name,
+          brand: product.brand,
+          image_url: product.image_url,
+          source_url: product.source_url,
+        });
+      }
+    },
+    [wishlist, addToWishlist, removeFromWishlist, isInWishlist],
+  );
+
+  // Text search → unified results (catalog + OBF). Category → catalog results. Else → featured.
+  const isSearchMode = searchQuery.trim().length > 0;
+  const displayCatalogProducts = selectedCategory ? catalogResults : featured;
+  const showFeatured = !isSearchMode && !selectedCategory;
+  const isSearching = isSearchMode ? isUnifiedSearching : isCatalogSearching;
 
   const renderProductCard = (product: CatalogProduct) => {
     const alreadyAdded = isProductInMyList(product.id);
     const isAdding = addingId === product.id;
+    const inWishlist = isInWishlist(product.id);
     const catInfo = CATEGORY_INFO[product.step_category];
 
     return (
@@ -311,23 +408,113 @@ function ExploreSection() {
             )}
           </View>
         </View>
-        <TouchableOpacity
-          style={[
-            styles.addButton,
-            alreadyAdded && styles.addButtonAdded,
-          ]}
-          onPress={() => handleAddToMyProducts(product)}
-          disabled={alreadyAdded || isAdding}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          {isAdding ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : alreadyAdded ? (
-            <Ionicons name="checkmark-circle" size={24} color={colors.success} />
-          ) : (
-            <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+        <View style={styles.exploreActions}>
+          <TouchableOpacity
+            style={styles.exploreActionButton}
+            onPress={() => handleToggleWishlistCatalog(product)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={inWishlist ? 'heart' : 'heart-outline'}
+              size={24}
+              color={inWishlist ? colors.error : colors.error}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.addButton,
+              alreadyAdded && styles.addButtonAdded,
+            ]}
+            onPress={() => handleAddToMyProducts(product)}
+            disabled={alreadyAdded || isAdding}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {isAdding ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : alreadyAdded ? (
+              <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+            ) : (
+              <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  const renderUnifiedCard = (product: UnifiedProduct) => {
+    const addId = getUnifiedAddId(product);
+    const isAdding = addingId === addId;
+    const alreadyAdded = product._source === 'catalog' && product._catalogId
+      ? isProductInMyList(product._catalogId)
+      : false;
+    const inWishlist = isInWishlist(addId);
+    const catInfo = CATEGORY_INFO[product.step_category ?? 'other'];
+
+    return (
+      <View key={addId} style={styles.exploreCard}>
+        {product.image_url ? (
+          <Image source={{ uri: product.image_url }} style={styles.exploreImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.exploreImagePlaceholder}>
+            <Ionicons name={(catInfo?.icon || 'flask-outline') as any} size={28} color={colors.textLight} />
+          </View>
+        )}
+        <View style={styles.exploreInfo}>
+          <Text style={styles.exploreName} numberOfLines={2}>
+            {product.name}
+          </Text>
+          {product.brand && (
+            <Text style={styles.exploreBrand} numberOfLines={1}>
+              {product.brand}
+            </Text>
           )}
-        </TouchableOpacity>
+          <View style={styles.exploreMeta}>
+            <View style={[styles.exploreCategoryBadge, { backgroundColor: catInfo.color + '20' }]}>
+              <Text style={[styles.exploreCategoryText, { color: catInfo.color }]}>
+                {catInfo.label}
+              </Text>
+            </View>
+            {product._source === 'catalog' && product._catalogProduct && product._catalogProduct.times_added > 1 && (
+              <Text style={styles.explorePopularity}>
+                {product._catalogProduct.times_added} users
+              </Text>
+            )}
+            {product._source === 'obf' && (
+              <Text style={styles.explorePopularity}>Open Beauty Facts</Text>
+            )}
+          </View>
+        </View>
+        <View style={styles.exploreActions}>
+          <TouchableOpacity
+            style={styles.exploreActionButton}
+            onPress={() => handleToggleWishlistUnified(product)}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons
+              name={inWishlist ? 'heart' : 'heart-outline'}
+              size={24}
+              color={inWishlist ? colors.error : colors.error}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.addButton,
+              alreadyAdded && styles.addButtonAdded,
+            ]}
+            onPress={() => handleAddUnifiedToMyProducts(product)}
+            disabled={alreadyAdded || isAdding}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {isAdding ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : alreadyAdded ? (
+              <Ionicons name="checkmark-circle" size={24} color={colors.success} />
+            ) : (
+              <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -342,17 +529,14 @@ function ExploreSection() {
             style={styles.searchInput}
             value={searchQuery}
             onChangeText={setSearchQuery}
-            placeholder="Search community products..."
+            placeholder="Search community + Open Beauty Facts..."
             placeholderTextColor={colors.textLight}
             onSubmitEditing={handleSearch}
             returnKeyType="search"
           />
           {searchQuery.length > 0 && (
             <TouchableOpacity
-              onPress={() => {
-                setSearchQuery('');
-                setSelectedCategory(null);
-              }}
+              onPress={handleClearSearch}
               hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
             >
               <Ionicons name="close-circle" size={20} color={colors.textLight} />
@@ -412,14 +596,29 @@ function ExploreSection() {
 
       {/* Results */}
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {isSearching || isFeaturedLoading ? (
+        {isSearching || (showFeatured && isFeaturedLoading) ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>
               {isSearching ? 'Searching...' : 'Loading...'}
             </Text>
           </View>
-        ) : displayProducts.length === 0 ? (
+        ) : isSearchMode ? (
+          unifiedResults.length === 0 ? (
+            <EmptyState
+              icon="sad-outline"
+              title="No products found"
+              message="Try a different search term or browse by category. Search includes the app catalog and Open Beauty Facts."
+            />
+          ) : (
+            <>
+              <Text style={styles.resultsHeader}>
+                {unifiedResults.length} product{unifiedResults.length !== 1 ? 's' : ''} found
+              </Text>
+              {unifiedResults.map(renderUnifiedCard)}
+            </>
+          )
+        ) : displayCatalogProducts.length === 0 ? (
           showFeatured ? (
             <EmptyState
               icon="people-outline"
@@ -436,9 +635,9 @@ function ExploreSection() {
         ) : (
           <>
             <Text style={styles.resultsHeader}>
-              {showFeatured ? 'Popular Products' : `${displayProducts.length} product${displayProducts.length !== 1 ? 's' : ''} found`}
+              {showFeatured ? 'Popular Products' : `${displayCatalogProducts.length} product${displayCatalogProducts.length !== 1 ? 's' : ''} found`}
             </Text>
-            {displayProducts.map(renderProductCard)}
+            {displayCatalogProducts.map(renderProductCard)}
           </>
         )}
         <View style={styles.bottomSpacer} />
@@ -792,6 +991,16 @@ const createStyles = (colors: any) => StyleSheet.create({
     ...Typography.caption,
     fontSize: 10,
     color: colors.textLight,
+  },
+  exploreActions: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: Spacing.xs,
+  },
+  exploreActionButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: Spacing.xs,
   },
   addButton: {
     alignItems: 'center',

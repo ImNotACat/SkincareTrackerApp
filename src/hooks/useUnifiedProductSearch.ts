@@ -48,6 +48,32 @@ function dedupKey(name?: string, brand?: string): string {
   return `${normalize(name)}|||${normalize(brand)}`;
 }
 
+/**
+ * Merge two lists: base first, then items from additional that don't duplicate (by name+brand).
+ */
+function mergeDedup(
+  base: UnifiedProduct[],
+  additional: UnifiedProduct[],
+): UnifiedProduct[] {
+  const seen = new Set<string>();
+  const out: UnifiedProduct[] = [];
+  for (const item of base) {
+    const key = dedupKey(item.name, item.brand);
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(item);
+    }
+  }
+  for (const item of additional) {
+    const key = dedupKey(item.name, item.brand);
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(item);
+    }
+  }
+  return out;
+}
+
 export function useUnifiedProductSearch() {
   const [results, setResults] = useState<UnifiedProduct[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -55,7 +81,8 @@ export function useUnifiedProductSearch() {
   const searchIdRef = useRef(0);
 
   /**
-   * Search both data sources in parallel and return merged, deduplicated results.
+   * Search both data sources in parallel. Catalog results are shown as soon as
+   * they return; OBF results are merged in when they arrive so the UI feels fast.
    */
   const search = useCallback(async (query: string) => {
     const trimmed = query.trim();
@@ -65,52 +92,28 @@ export function useUnifiedProductSearch() {
     setIsSearching(true);
     setHasSearched(true);
 
-    try {
-      // Run both searches in parallel
-      const [catalogResults, obfResults] = await Promise.allSettled([
-        searchCatalog(trimmed),
-        searchOBFProducts(trimmed),
-      ]);
-
-      // Bail out if a newer search was started
-      if (searchId !== searchIdRef.current) return;
-
-      const catalogItems: UnifiedProduct[] =
-        catalogResults.status === 'fulfilled' ? catalogResults.value : [];
-      const obfItems: UnifiedProduct[] =
-        obfResults.status === 'fulfilled' ? obfResults.value : [];
-
-      // Merge: catalog results first, then OBF results that aren't duplicates
-      const seen = new Set<string>();
-      const merged: UnifiedProduct[] = [];
-
-      for (const item of catalogItems) {
-        const key = dedupKey(item.name, item.brand);
-        if (!seen.has(key)) {
-          seen.add(key);
-          merged.push(item);
-        }
-      }
-
-      for (const item of obfItems) {
-        const key = dedupKey(item.name, item.brand);
-        if (!seen.has(key)) {
-          seen.add(key);
-          merged.push(item);
-        }
-      }
-
-      setResults(merged);
-    } catch (error) {
-      console.error('Unified search error:', error);
-      if (searchId === searchIdRef.current) {
-        setResults([]);
-      }
-    } finally {
-      if (searchId === searchIdRef.current) {
+    // Catalog: show immediately when it resolves (usually faster than OBF)
+    searchCatalog(trimmed)
+      .then((catalogItems) => {
+        if (searchId !== searchIdRef.current) return;
+        setResults((prev) => mergeDedup(catalogItems, prev));
         setIsSearching(false);
-      }
-    }
+      })
+      .catch((err) => {
+        console.error('Catalog search error:', err);
+        if (searchId === searchIdRef.current) setResults([]);
+        setIsSearching(false);
+      });
+
+    // OBF: merge in when it resolves; list updates again when this finishes
+    searchOBFProducts(trimmed)
+      .then((obfItems) => {
+        if (searchId !== searchIdRef.current) return;
+        setResults((prev) => mergeDedup(prev, obfItems));
+      })
+      .catch(() => {
+        // Already logged in searchOBFProducts; no need to block or reset UI
+      });
   }, []);
 
   const clearResults = useCallback(() => {

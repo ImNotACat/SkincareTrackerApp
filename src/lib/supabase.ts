@@ -25,4 +25,5 @@ export const Tables = {
   COMPLETED_STEPS: 'completed_steps',
   PRODUCTS: 'products',
   JOURNAL_ENTRIES: 'journal_entries',
+  ACTIVE_INGREDIENTS: 'active_ingredients',
 } as const;

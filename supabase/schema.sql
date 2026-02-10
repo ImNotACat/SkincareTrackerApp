@@ -212,6 +212,9 @@ CREATE TABLE IF NOT EXISTS wishlist (
 
 CREATE INDEX IF NOT EXISTS idx_wishlist_user ON wishlist(user_id);
 
+-- ─── Active Ingredients (reference; populate via dashboard) ──────────────────
+-- See migration create_active_ingredients.sql for full definition and RLS.
+
 -- ─── Supabase Storage Bucket for Journal Photos ────────────────────────────
 -- Run this in the SQL Editor or create via the Supabase Dashboard → Storage.
 --
@@ -240,6 +243,7 @@ ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_comments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE journal_entries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wishlist ENABLE ROW LEVEL SECURITY;
+-- active_ingredients: RLS and policy in migration create_active_ingredients.sql
 
 -- Profiles: users can only see/update their own profile
 DROP POLICY IF EXISTS "Users can view own profile" ON profiles;

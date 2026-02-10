@@ -19,12 +19,14 @@ import { useToast } from '../src/components/Toast';
 import { CATEGORIES, CATEGORY_INFO } from '../src/constants/skincare';
 import { IngredientSelector } from '../src/components/IngredientSelector';
 import { DateInput } from '../src/components/DateInput';
+import { useActiveIngredients } from '../src/hooks/useActiveIngredients';
 import type { StepCategory } from '../src/types';
 
 export default function EditProductScreen() {
   const router = useRouter();
   const { productId } = useLocalSearchParams<{ productId: string }>();
   const { products, updateProduct, deleteProduct } = useProducts();
+  const { sections: ingredientSections } = useActiveIngredients();
   const product = products.find((p) => p.id === productId);
   const { colors } = useTheme();
   const { showToast } = useToast();
@@ -278,6 +280,7 @@ export default function EditProductScreen() {
       <IngredientSelector
         selectedIngredients={activeIngredients}
         onSelectionChange={isFromCatalog ? () => {} : setActiveIngredients}
+        ingredientSections={ingredientSections}
       />
 
       <Text style={styles.label}>FULL INGREDIENTS LIST</Text>

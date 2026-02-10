@@ -9,7 +9,7 @@ import {
   Image,
   ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
@@ -19,6 +19,7 @@ import { useToast } from '../../src/components/Toast';
 import { useConfirm } from '../../src/contexts/ConfirmContext';
 import { importProductFromUrl } from '../../src/lib/product-import';
 import { useUnifiedProductSearch, type UnifiedProduct } from '../../src/hooks/useUnifiedProductSearch';
+import { useActiveIngredients } from '../../src/hooks/useActiveIngredients';
 import { CATEGORIES, CATEGORY_INFO } from '../../src/constants/skincare';
 import { getTodayString } from '../../src/lib/dateUtils';
 import { IngredientSelector } from '../../src/components/IngredientSelector';
@@ -30,6 +31,7 @@ type AddMode = 'manual' | 'import' | 'search';
 export default function AddProductScreen() {
   const router = useRouter();
   const { addProduct, products } = useProducts();
+  const { sections: ingredientSections } = useActiveIngredients();
   const { colors } = useTheme();
   const { showToast } = useToast();
   const { showConfirm } = useConfirm();
@@ -38,12 +40,14 @@ export default function AddProductScreen() {
   const [mode, setMode] = useState<AddMode>('manual');
   const [importUrl, setImportUrl] = useState('');
   const [isImporting, setIsImporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Search state
   const { results: searchResults, isSearching, hasSearched, search, clearResults } =
     useUnifiedProductSearch();
   const [searchQuery, setSearchQuery] = useState('');
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef = useRef<ScrollView>(null);
 
   // Track catalog linkage when a product was selected from search
   const [selectedCatalogId, setSelectedCatalogId] = useState<string | undefined>(undefined);
@@ -64,6 +68,39 @@ export default function AddProductScreen() {
   const [startedAt, setStartedAt] = useState(getTodayString());
 
   const todayStr = new Date().toISOString().split('T')[0];
+
+  // Reset form and scroll to top whenever the screen is opened/focused (e.g. tapping + to add a new product)
+  useFocusEffect(
+    useCallback(() => {
+      setMode('manual');
+      setImportUrl('');
+      setIsImporting(false);
+      setSearchQuery('');
+      setSelectedCatalogId(undefined);
+      setName('');
+      setBrand('');
+      setSize('');
+      setImageUrl('');
+      setSourceUrl('');
+      setStepCategory('serum');
+      setActiveIngredients([]);
+      setFullIngredients('');
+      setLongevityMonths('');
+      setDatePurchased('');
+      setDateOpened('');
+      setNotes('');
+      setStartedAt(getTodayString());
+      clearResults();
+      if (searchTimerRef.current) {
+        clearTimeout(searchTimerRef.current);
+        searchTimerRef.current = null;
+      }
+      // Scroll to top so the user always sees the start of the form
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
+    }, [clearResults]),
+  );
 
   const handlePickImage = () => {
     showConfirm({
@@ -237,32 +274,39 @@ export default function AddProductScreen() {
       showToast('Missing Name', { message: 'Please enter a product name.', variant: 'warning' });
       return;
     }
-
-    await addProduct(
-      {
-        catalog_id: selectedCatalogId,
-        name: name.trim(),
-        brand: brand.trim() || undefined,
-        size: size.trim() || undefined,
-        image_url: imageUrl.trim() || undefined,
-        source_url: sourceUrl.trim() || undefined,
-        step_category: stepCategory,
-        active_ingredients: activeIngredients.length > 0 ? activeIngredients.join(', ') : undefined,
-        full_ingredients: fullIngredients.trim() || undefined,
-        longevity_months: longevityMonths ? parseInt(longevityMonths, 10) || undefined : undefined,
-        date_purchased: datePurchased.trim() || undefined,
-        date_opened: dateOpened.trim() || undefined,
-        notes: notes.trim() || undefined,
-        started_at: startedAt,
-      },
-      selectedCatalogId,
-    );
-
-    router.back();
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await addProduct(
+        {
+          catalog_id: selectedCatalogId,
+          name: name.trim(),
+          brand: brand.trim() || undefined,
+          size: size.trim() || undefined,
+          image_url: imageUrl.trim() || undefined,
+          source_url: sourceUrl.trim() || undefined,
+          step_category: stepCategory,
+          active_ingredients: activeIngredients.length > 0 ? activeIngredients.join(', ') : undefined,
+          full_ingredients: fullIngredients.trim() || undefined,
+          longevity_months: longevityMonths ? parseInt(longevityMonths, 10) || undefined : undefined,
+          date_purchased: datePurchased.trim() || undefined,
+          date_opened: dateOpened.trim() || undefined,
+          notes: notes.trim() || undefined,
+          started_at: startedAt,
+        },
+        selectedCatalogId,
+      );
+      // Always go to Products tab after save (add-product is a tab; router.back() can fail if there's no stack)
+      router.replace('/(tabs)/products');
+    } catch (error) {
+      showToast('Error', { message: 'Failed to add product. Please try again.', variant: 'error' });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
       {/* Mode toggle */}
       <View style={styles.modeToggle}>
         <TouchableOpacity
@@ -530,6 +574,7 @@ export default function AddProductScreen() {
       <IngredientSelector
         selectedIngredients={activeIngredients}
         onSelectionChange={setActiveIngredients}
+        ingredientSections={ingredientSections}
       />
 
       <Text style={styles.label}>FULL INGREDIENTS LIST (OPTIONAL)</Text>
@@ -598,8 +643,17 @@ export default function AddProductScreen() {
       />
 
       {/* Save */}
-      <TouchableOpacity style={styles.saveButton} onPress={handleSave} activeOpacity={0.85}>
-        <Text style={styles.saveButtonText}>Add Product</Text>
+      <TouchableOpacity
+        style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
+        onPress={handleSave}
+        activeOpacity={0.85}
+        disabled={isSaving}
+      >
+        {isSaving ? (
+          <ActivityIndicator size="small" color={colors.textOnPrimary} />
+        ) : (
+          <Text style={styles.saveButtonText}>Add Product</Text>
+        )}
       </TouchableOpacity>
 
       <View style={{ height: Spacing.xxl }} />
@@ -904,6 +958,9 @@ const createStyles = (colors: any) => StyleSheet.create({
     borderRadius: BorderRadius.pill,
     paddingVertical: Spacing.md,
     marginTop: Spacing.xl,
+  },
+  saveButtonDisabled: {
+    opacity: 0.6,
   },
   saveButtonText: { ...Typography.button, color: colors.textOnPrimary },
 });

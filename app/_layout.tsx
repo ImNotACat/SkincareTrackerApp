@@ -7,6 +7,7 @@ import { ThemeProvider, useTheme } from '../src/contexts/ThemeContext';
 import { ProductsProvider } from '../src/contexts/ProductsContext';
 import { RoutineProvider } from '../src/contexts/RoutineContext';
 import { ConfirmProvider } from '../src/contexts/ConfirmContext';
+import { ProductPreviewProvider } from '../src/contexts/ProductPreviewContext';
 import { ToastProvider } from '../src/components/Toast';
 
 function RootLayoutNav() {
@@ -69,6 +70,14 @@ function RootLayoutNav() {
           options={{ title: 'Product Details' }}
         />
         <Stack.Screen
+          name="ingredient-detail"
+          options={{ title: 'Ingredient' }}
+        />
+        <Stack.Screen
+          name="product-preview"
+          options={{ title: 'Product Details' }}
+        />
+        <Stack.Screen
           name="add-entry"
           options={{ title: 'New Entry', presentation: 'modal' }}
         />
@@ -92,9 +101,11 @@ export default function RootLayout() {
         <ProductsProvider>
           <RoutineProvider>
             <ConfirmProvider>
-              <ToastProvider>
-                <RootLayoutNav />
-              </ToastProvider>
+              <ProductPreviewProvider>
+                <ToastProvider>
+                  <RootLayoutNav />
+                </ToastProvider>
+              </ProductPreviewProvider>
             </ConfirmProvider>
           </RoutineProvider>
         </ProductsProvider>

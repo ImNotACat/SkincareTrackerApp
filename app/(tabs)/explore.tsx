@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,52 +10,61 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/contexts/ThemeContext';
 import { Typography, Spacing, BorderRadius } from '../../src/constants/theme';
-import { searchProducts } from '../../src/lib/openbeautyfacts';
+import { useUnifiedProductSearch, type UnifiedProduct } from '../../src/hooks/useUnifiedProductSearch';
 import { useWishlist } from '../../src/hooks/useWishlist';
+import { useProductPreview } from '../../src/contexts/ProductPreviewContext';
 import { EmptyState } from '../../src/components/EmptyState';
-import type { OpenBeautyFactsProduct } from '../../src/lib/openbeautyfacts';
+
+/** Stable id for wishlist: OBF code, or catalog-prefixed id for app catalog items. */
+function getWishlistId(product: UnifiedProduct): string {
+  if (product._source === 'obf' && product._obfCode) return product._obfCode;
+  if (product._source === 'catalog' && product._catalogId) return `catalog:${product._catalogId}`;
+  return `unknown:${product.name}:${product.brand ?? ''}`;
+}
 
 export default function ExploreScreen() {
+  const router = useRouter();
   const { colors } = useTheme();
-  const { wishlist, addToWishlist, removeFromWishlist, isInWishlist, reload } = useWishlist();
+  const { wishlist, addToWishlist, removeFromWishlist, isInWishlist } = useWishlist();
+  const { setPreviewProduct } = useProductPreview();
   const [searchQuery, setSearchQuery] = useState('');
-  const [products, setProducts] = useState<OpenBeautyFactsProduct[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { results: products, isSearching, hasSearched, search, clearResults } = useUnifiedProductSearch();
 
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) return;
-    
-    setIsSearching(true);
-    setHasSearched(true);
-    try {
-      const result = await searchProducts(searchQuery.trim());
-      setProducts(result.products);
-    } catch (error) {
-      console.error('Search failed:', error);
-      setProducts([]);
-    } finally {
-      setIsSearching(false);
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    if (!searchQuery.trim()) {
+      clearResults();
+      return;
     }
-  }, [searchQuery]);
+    searchTimerRef.current = setTimeout(() => {
+      search(searchQuery.trim());
+    }, 300);
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [searchQuery, search, clearResults]);
 
-  const handleToggleWishlist = async (product: OpenBeautyFactsProduct) => {
-    const productId = product.code;
+  const handleSearch = () => {
+    if (searchQuery.trim()) search(searchQuery.trim());
+  };
+
+  const handleToggleWishlist = async (product: UnifiedProduct) => {
+    const productId = getWishlistId(product);
     if (isInWishlist(productId)) {
       const item = wishlist.find((w) => w.product_id === productId);
-      if (item) {
-        await removeFromWishlist(item.id);
-      }
+      if (item) await removeFromWishlist(item.id);
     } else {
       await addToWishlist({
         product_id: productId,
-        product_name: product.product_name || 'Unknown Product',
-        brand: product.brands || undefined,
-        image_url: product.image_url || undefined,
-        source_url: product.url || undefined,
+        product_name: product.name,
+        brand: product.brand,
+        image_url: product.image_url,
+        source_url: product.source_url,
       });
     }
   };
@@ -123,12 +132,17 @@ export default function ExploreScreen() {
           <>
             <Text style={styles.resultsHeader}>{products.length} product{products.length !== 1 ? 's' : ''} found</Text>
             {products.map((product) => {
-              const inWishlist = isInWishlist(product.code);
+              const productId = getWishlistId(product);
+              const inWishlist = isInWishlist(productId);
               return (
                 <TouchableOpacity
-                  key={product.code}
+                  key={productId}
                   style={styles.productCard}
                   activeOpacity={0.7}
+                  onPress={() => {
+                    setPreviewProduct(product);
+                    router.push('/product-preview');
+                  }}
                 >
                   {product.image_url ? (
                     <Image source={{ uri: product.image_url }} style={styles.productImage} resizeMode="cover" />
@@ -139,16 +153,16 @@ export default function ExploreScreen() {
                   )}
                   <View style={styles.productInfo}>
                     <Text style={styles.productName} numberOfLines={2}>
-                      {product.product_name || 'Unknown Product'}
+                      {product.name || 'Unknown Product'}
                     </Text>
-                    {product.brands && (
+                    {product.brand && (
                       <Text style={styles.productBrand} numberOfLines={1}>
-                        {product.brands}
+                        {product.brand}
                       </Text>
                     )}
-                    {product.ingredients_text && (
+                    {product.ingredients && (
                       <Text style={styles.productIngredients} numberOfLines={2}>
-                        {product.ingredients_text.substring(0, 100)}...
+                        {product.ingredients.length > 100 ? `${product.ingredients.substring(0, 100)}...` : product.ingredients}
                       </Text>
                     )}
                   </View>
