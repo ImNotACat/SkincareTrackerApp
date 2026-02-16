@@ -3,7 +3,11 @@ import { Platform } from 'react-native';
 import { Session } from '@supabase/supabase-js';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import Constants from 'expo-constants';
 import { supabase } from '../lib/supabase';
+
+// Use app's custom scheme for OAuth redirect so standalone APK/build never redirects to Expo Go
+const NATIVE_REDIRECT_SCHEME = Constants.expoConfig?.scheme ?? 'glow-skincare';
 import type { AuthState, UserProfile } from '../types';
 
 // Required for OAuth to work properly on mobile
@@ -106,7 +110,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // ── Native flow: in-app browser ───────────────────────────────────
-    const redirectUri = Linking.createURL('auth/callback');
+    // Explicit scheme ensures APK/standalone builds use glow-skincare://, not exp:// (Expo Go)
+    const redirectUri = Linking.createURL('auth/callback', { scheme: NATIVE_REDIRECT_SCHEME });
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: 'google',

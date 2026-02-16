@@ -150,7 +150,7 @@ export default function IngredientDetailScreen() {
 
             <DetailBlock
               title="Description"
-              content={ingredient.description}
+              content={ingredient.full_description?.trim() || ingredient.description}
               icon="document-text-outline"
               colors={colors}
             />

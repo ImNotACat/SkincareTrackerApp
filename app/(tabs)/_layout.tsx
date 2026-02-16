@@ -71,9 +71,7 @@ export default function TabsLayout() {
         name="journal"
         options={{
           title: 'Progress',
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="journal-outline" size={22} color={color} />
-          ),
+          href: null,
         }}
       />
       <Tabs.Screen

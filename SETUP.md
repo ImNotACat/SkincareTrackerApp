@@ -352,6 +352,15 @@ Then re-run the full schema.
 - Verify the Web Client ID and Secret are entered correctly in Supabase
 - Ensure `scheme: 'glow-skincare'` is set in `app.json` (it is by default)
 
+### APK / standalone build redirects to Expo Go after sign-in
+
+- The app now uses an explicit redirect URI with your custom scheme (`glow-skincare://auth/callback`). Rebuild the APK after pulling the latest code.
+- In **Supabase** → **Authentication** → **URL Configuration**, add this to **Redirect URLs** (in addition to any web URLs you use):
+  ```
+  glow-skincare://auth/callback
+  ```
+- Without this, Supabase may reject the redirect and the flow can fall back to an Expo Go–style URL.
+
 ### "Invalid API key" or Supabase connection errors
 
 - Verify `EXPO_PUBLIC_SUPABASE_URL` is the full URL including `https://`

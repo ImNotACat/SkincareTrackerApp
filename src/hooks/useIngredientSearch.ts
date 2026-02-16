@@ -19,7 +19,7 @@ export function useIngredientSearch(query: string) {
     try {
       const { data, error } = await supabase
         .from(Tables.ACTIVE_INGREDIENTS)
-        .select('id, name, section, benefits, side_effects, risky_interactions, description, created_at, updated_at')
+        .select('id, name, section, benefits, side_effects, risky_interactions, description, full_description, created_at, updated_at')
         .ilike('name', `%${trimmed}%`)
         .order('name', { ascending: true })
         .limit(20);

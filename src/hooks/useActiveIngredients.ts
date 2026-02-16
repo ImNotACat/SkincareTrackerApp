@@ -11,6 +11,7 @@ export interface ActiveIngredientRow {
   side_effects: string | null;
   risky_interactions: string | null;
   description: string | null;
+  full_description: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -19,9 +20,15 @@ export interface ActiveIngredientRow {
  * Fetches active ingredients from the database, grouped by section.
  * Falls back to the static INGREDIENT_SECTIONS when the table is empty or the request fails.
  */
+function pickRandom<T>(arr: T[]): T | null {
+  if (arr.length === 0) return null;
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
 export function useActiveIngredients() {
   const [sections, setSections] = useState<IngredientSection[]>(INGREDIENT_SECTIONS);
   const [rawRows, setRawRows] = useState<ActiveIngredientRow[]>([]);
+  const [spotlightIngredient, setSpotlightIngredient] = useState<ActiveIngredientRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [fromDb, setFromDb] = useState(false);
 
@@ -30,7 +37,7 @@ export function useActiveIngredients() {
     try {
       const { data, error } = await supabase
         .from(Tables.ACTIVE_INGREDIENTS)
-        .select('id, name, section, benefits, side_effects, risky_interactions, description, created_at, updated_at')
+        .select('id, name, section, benefits, side_effects, risky_interactions, description, full_description, created_at, updated_at')
         .order('section', { ascending: true, nullsFirst: false })
         .order('name', { ascending: true });
 
@@ -38,6 +45,7 @@ export function useActiveIngredients() {
         console.warn('Active ingredients fetch failed, using static list:', error.message);
         setSections(INGREDIENT_SECTIONS);
         setRawRows([]);
+        setSpotlightIngredient(null);
         setFromDb(false);
         return;
       }
@@ -46,11 +54,13 @@ export function useActiveIngredients() {
       if (rows.length === 0) {
         setSections(INGREDIENT_SECTIONS);
         setRawRows([]);
+        setSpotlightIngredient(null);
         setFromDb(false);
         return;
       }
 
       setRawRows(rows);
+      setSpotlightIngredient(pickRandom(rows));
 
       const bySection = new Map<string, string[]>();
       for (const row of rows) {
@@ -73,6 +83,7 @@ export function useActiveIngredients() {
       console.warn('Active ingredients load error, using static list:', e);
       setSections(INGREDIENT_SECTIONS);
       setRawRows([]);
+      setSpotlightIngredient(null);
       setFromDb(false);
     } finally {
       setIsLoading(false);
@@ -82,8 +93,6 @@ export function useActiveIngredients() {
   useEffect(() => {
     load();
   }, [load]);
-
-  const spotlightIngredient = fromDb && rawRows.length > 0 ? rawRows[0] : null;
 
   return { sections, rawRows, spotlightIngredient, isLoading, fromDb, reload: load };
 }

@@ -13,7 +13,7 @@ export function useIngredientById(id: string | undefined | null) {
     try {
       const { data, error: err } = await supabase
         .from(Tables.ACTIVE_INGREDIENTS)
-        .select('id, name, section, benefits, side_effects, risky_interactions, description, created_at, updated_at')
+        .select('id, name, section, benefits, side_effects, risky_interactions, description, full_description, created_at, updated_at')
         .eq('id', ingredientId)
         .maybeSingle();
 
