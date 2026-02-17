@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 import { useProducts } from '../hooks/useProducts';
@@ -81,7 +81,7 @@ export interface RoutineContextValue {
   addStep: (step: Omit<RoutineStep, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => Promise<RoutineStep>;
   updateStep: (id: string, updates: Partial<RoutineStep>) => Promise<void>;
   deleteStep: (id: string) => Promise<void>;
-  reorderSteps: (reorderedSteps: RoutineStep[]) => Promise<void>;
+  reorderSteps: (reorderedSteps: RoutineStep[]) => void;
   getTodayProgress: () => { completed: number; total: number };
   reload: () => Promise<void>;
 }
@@ -96,6 +96,13 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
   const [steps, setSteps] = useState<RoutineStep[]>([]);
   const [completedSteps, setCompletedSteps] = useState<CompletedStep[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const stepsRef = useRef<RoutineStep[]>(steps);
+  const reorderDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    stepsRef.current = steps;
+  }, [steps]);
 
   const ensureProductActive = useCallback(
     (productId: string | undefined) => {
@@ -487,29 +494,63 @@ export function RoutineProvider({ children }: { children: React.ReactNode }) {
     [user?.id, steps, completedSteps, moveToShelfIfUnused],
   );
 
+  const REORDER_DEBOUNCE_MS = 500;
+
+  const persistStepsOrder = useCallback(
+    async (stepsToPersist: RoutineStep[]) => {
+      if (!user?.id) return;
+      const now = new Date().toISOString();
+      const results = await Promise.all(
+        stepsToPersist.map((step, index) =>
+          supabase
+            .from(Tables.ROUTINE_STEPS)
+            .update({ order: index, updated_at: now })
+            .eq('id', step.id)
+            .eq('user_id', user.id),
+        ),
+      );
+      const failed = results.find((r) => r.error);
+      if (failed?.error) {
+        console.error('Failed to save step order:', failed.error);
+      }
+    },
+    [user?.id],
+  );
+
   const reorderSteps = useCallback(
-    async (reorderedSteps: RoutineStep[]) => {
+    (reorderedSteps: RoutineStep[]) => {
       const updated = reorderedSteps.map((step, index) => ({
         ...step,
         order: index,
         updated_at: new Date().toISOString(),
       }));
-      if (user?.id) {
-        await Promise.all(
-          updated.map((step) =>
-            supabase
-              .from(Tables.ROUTINE_STEPS)
-              .update({ order: step.order, updated_at: step.updated_at })
-              .eq('id', step.id)
-              .eq('user_id', user.id),
-          ),
-        );
-      }
       setSteps(updated);
-      if (!user?.id) await AsyncStorage.setItem(STORAGE_KEYS.ROUTINE_STEPS, JSON.stringify(updated));
+
+      if (!user?.id) {
+        AsyncStorage.setItem(STORAGE_KEYS.ROUTINE_STEPS, JSON.stringify(updated));
+        return;
+      }
+
+      if (reorderDebounceRef.current != null) {
+        clearTimeout(reorderDebounceRef.current);
+      }
+      reorderDebounceRef.current = setTimeout(() => {
+        reorderDebounceRef.current = null;
+        persistStepsOrder(stepsRef.current);
+      }, REORDER_DEBOUNCE_MS);
     },
-    [user?.id],
+    [user?.id, persistStepsOrder],
   );
+
+  useEffect(() => {
+    return () => {
+      if (reorderDebounceRef.current != null) {
+        clearTimeout(reorderDebounceRef.current);
+        reorderDebounceRef.current = null;
+        persistStepsOrder(stepsRef.current);
+      }
+    };
+  }, [persistStepsOrder]);
 
   const getTodayProgress = useCallback((): { completed: number; total: number } => {
     const todaySteps = getTodaySteps();

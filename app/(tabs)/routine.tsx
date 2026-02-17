@@ -57,14 +57,14 @@ export default function RoutineScreen() {
   );
 
   const onReordered = useCallback(
-    async (fromIndex: number, toIndex: number) => {
+    (fromIndex: number, toIndex: number) => {
       const copy = [...filteredSteps];
       const [removed] = copy.splice(fromIndex, 1);
       if (!removed) return;
       copy.splice(Math.min(toIndex, copy.length), 0, removed);
       const reorderedFiltered = copy.map((s, i) => ({ ...s, order: i }));
       const otherSteps = steps.filter((s) => s.time_of_day !== activeTab && s.time_of_day !== 'both');
-      await reorderSteps([...otherSteps, ...reorderedFiltered]);
+      reorderSteps([...otherSteps, ...reorderedFiltered]);
     },
     [filteredSteps, steps, activeTab, reorderSteps],
   );
